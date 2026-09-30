@@ -1,0 +1,29 @@
+{
+  "name": "zernio-gateway",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Zeptly Social — Zernio-backed headless social infrastructure gateway for Zeptly",
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "type": "module",
+  "scripts": {
+    "build": "pnpm -r --filter \"./apps/*\" build",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run --passWithNoTests",
+    "check": "pnpm lint && pnpm typecheck && pnpm test"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.0",
+    "@types/node": "^22.20.4",
+    "eslint": "^9.39.5",
+    "globals": "^16.0.0",
+    "tsup": "^8.5.1",
+    "tsx": "^4.23.15",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.70.1",
+    "vitest": "^4.1.11"
+  }
+}
