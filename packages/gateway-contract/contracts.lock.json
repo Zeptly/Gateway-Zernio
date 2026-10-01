@@ -2,7 +2,7 @@
   "gateway-contract@1": {
     "schemas": 17,
     "constants": 6,
-    "sha256": "6541d557a4af52888b63567d1a3fcfe73044090771f7b1a3f3b15556ac96c324"
+    "sha256": "3134ad65217cfb42266d8ac920616659e5d21bae2760485b209e79c3c10fdc4c"
   },
   "social.publishing@1+social.scheduling@1": {
     "schemas": 27,

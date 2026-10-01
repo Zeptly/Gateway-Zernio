@@ -9,7 +9,7 @@ export const GATEWAY_CONTRACT_VERSION = "1" as const;
 
 export const GatewayIdentitySchema = z
   .object({
-    gateway: z.string().regex(/^[a-z][a-z0-9-]{1,31}$/).describe('Stable gateway id, e.g. "outstand"'),
+    gateway: z.string().regex(/^[a-z][a-z0-9-]{1,31}$/).describe('Stable gateway id, e.g. "acme-social"'),
     provider: z.string().describe("Upstream provider represented by this gateway (one per gateway)"),
     displayName: z.string(),
     gatewayContractVersion: z.literal(GATEWAY_CONTRACT_VERSION),
