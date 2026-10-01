@@ -253,6 +253,9 @@ describe("authorisation lapse: detect, explain, and reconnect in place", () => {
     const after = await h.call(A, "GET", `/v1/connections/${c.id}`);
     expect(after.json.status).toBe("reauthorization_required");
     expect(h.fake.requests.some((r) => r.path === "/v1/accounts/health")).toBe(true);
+    // the evidence Zernio reported at that moment is kept with the status change
+    const reason = await h.db.pool.query("select status_reason from gateway_connections where id = $1", [c.id]);
+    expect(reason.rows[0].status_reason).toContain("tokenValid=false");
   });
 
   it("a provider auth refusal on unpublish flags the connection and returns REAUTHORIZATION_REQUIRED (not the generic credentials error)", async () => {

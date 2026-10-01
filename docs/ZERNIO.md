@@ -40,7 +40,7 @@ Provider authority: <https://docs.zernio.com/> (OpenAPI 3.1, API version **1.181
 
 - **Zernio refreshes tokens itself**; when a refresh cannot recover an account the provider call returns `401 … Token expired or revoked`
   (`TOKEN_EXPIRED`) and the account must be re-authorised. `GET /v1/accounts` keeps such an account `isActive: true`, so listing alone cannot see it.
-- **Detection.** `ZernioAccountPort.listAccounts` also reads `GET /v1/accounts/health` (best effort: a failing health call never downgrades an account).
+- **Detection.** `ZernioAccountPort.listAccounts` also reads `GET /v1/accounts/health` (best effort: a failing health call never downgrades an account). Documented shape: `{ summary:{total,healthy,warning,error,needsReconnect}, accounts:[{accountId,platform,username,status,canPost,canFetchAnalytics,tokenValid,needsReconnect,issues}] }`; the per-account endpoint `GET /v1/accounts/{accountId}/health` adds `tokenStatus:{valid,expiresAt,expiresIn,needsRefresh}`, `permissions` and `recommendations`. **Only explicit token signals flip a connection** (`needsReconnect=true`, `tokenValid=false`, `tokenStatus.valid=false`); `status` (healthy|warning|error), `canPost` and `issues` are recorded in the connection's status reason as evidence but never infer a dead token (an `error` can be a missing permission). Unrecognised shapes read as healthy.
   `reconcile_connections` runs every 10 minutes (X access tokens live ~2 h) and flips a dead account to `reauthorization_required`.
   An `account.disconnected` (unintentional) webhook does the same immediately.
 - **Fail closed, with a precise error.** A provider `401/403` on publish or unpublish flags the connection `reauthorization_required` and returns
@@ -51,3 +51,17 @@ Provider authority: <https://docs.zernio.com/> (OpenAPI 3.1, API version **1.181
   reconcile deliberately does not "heal" the status on its own.
 - **Scopes.** The gateway passes no scope list to Zernio; Zernio documents the X scopes it requests as `tweet.read, tweet.write, users.read, offline.access, media.write`
   (`offline.access` is what yields a refresh token). Whether a given account holds a refresh token is only visible in Zernio's account health, not in our data.
+
+
+### Open item: the X token lapse (2026-10-01) — root cause NOT CONFIRMED
+- No live account-health capture was taken at the time of failure; the real response for the X account in our environment has NOT been verified.
+- Do not infer expired token, revoked token, missing scope, plan limit or provider-side disconnect without live evidence. The only direct evidence is Zernio's `401 Token expired or revoked for twitter. Please reconnect your account.` on `POST /v1/posts/{id}/unpublish`.
+- Zernio documents `account.disconnected` webhooks with `disconnectionType` intentional vs unintentional (the latter covers expiry/revocation); the gateway did not log event types at the time.
+
+### Live-test protocol: health snapshots (read-only, add to every Zernio live connection test)
+```
+before publish:   GET /v1/accounts/{accountId}/health
+after publish:    GET /v1/accounts/{accountId}/health
+on any 401/403:   GET /v1/accounts/{accountId}/health  and  GET /v1/accounts/health
+```
+Record, per snapshot: `status`, `tokenStatus.valid/expiresAt/needsRefresh`, `permissions.canPost/canFetchAnalytics/missingRequired`, `issues`, `recommendations` (no tokens). This separates: token invalid/expired; reconnect required; posting permission missing; analytics permission missing; account-level warning/error; and a provider-side disconnect (cross-check the `account.disconnected` delivery log). Since this change, a reconcile that flips a connection also stores the health evidence it saw in the connection's `status_reason`.

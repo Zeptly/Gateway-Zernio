@@ -15,6 +15,8 @@ export interface ProviderAccountRecord {
   avatarUrl?: string;
   accountType?: "personal" | "organization";
   isActive: boolean;
+  /** Why the provider reports the account unusable (bounded, redacted); recorded as the connection's status reason. */
+  statusNote?: string;
   /** Opaque tenant correlation value the provider recorded, when available. */
   tenantRef?: string;
 }

@@ -81,5 +81,8 @@ export interface ParsedZernioWebhook {
 /** Token health of one account, from `GET /v1/accounts/health`. */
 export interface ZernioAccountHealth {
   externalId: string;
+  /** True only on an explicit token signal (needsReconnect / tokenValid=false / tokenStatus.valid=false). */
   needsReconnection: boolean;
+  /** Redacted, bounded summary of what Zernio reported (status, canPost, signals, issue strings): evidence, not a verdict. */
+  evidence: string;
 }

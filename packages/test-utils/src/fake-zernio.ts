@@ -194,7 +194,20 @@ export class FakeZernio {
 
     if (path === "/v1/accounts/health" && method === "GET") {
       const list = [...this.accounts.values()].filter((a) => !query.profileId || a.profileId === query.profileId);
-      return json(200, { accounts: list.map((a) => ({ accountId: a._id, platform: a.platform, status: a.tokenExpired ? "error" : "healthy", tokenValid: !a.tokenExpired, needsReconnect: a.tokenExpired === true || a.needsReconnection === true })) });
+      return json(200, {
+        summary: { total: list.length, healthy: list.filter((a) => !a.tokenExpired).length, warning: 0, error: list.filter((a) => a.tokenExpired).length, needsReconnect: list.filter((a) => a.tokenExpired || a.needsReconnection).length },
+        accounts: list.map((a) => ({
+          accountId: a._id,
+          platform: a.platform,
+          username: a.username,
+          status: a.tokenExpired ? "error" : "healthy",
+          canPost: !a.tokenExpired,
+          canFetchAnalytics: !a.tokenExpired,
+          tokenValid: !a.tokenExpired,
+          needsReconnect: a.tokenExpired === true || a.needsReconnection === true,
+          issues: a.tokenExpired ? ["Token expired"] : [],
+        })),
+      });
     }
     if (path === "/v1/accounts" && method === "GET") {
       const list = [...this.accounts.values()].filter((a) => !query.profileId || a.profileId === query.profileId);
