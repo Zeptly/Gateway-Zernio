@@ -83,11 +83,11 @@ export class ZernioAccountPort implements ProviderAccountPort {
    * Zernio keeps `isActive: true` for an account whose OAuth token it can no longer refresh; only the health endpoint
    * says so. Health is best effort: if it fails the listing still works and the account is simply not downgraded.
    */
-  private async deadTokens(profileId?: string): Promise<Set<string>> {
+  private async deadTokens(profileId?: string): Promise<Map<string, string>> {
     try {
-      return new Set((await this.client.getAccountsHealth(profileId ? { profileId } : {})).filter((h) => h.needsReconnection).map((h) => h.externalId));
+      return new Map((await this.client.getAccountsHealth(profileId ? { profileId } : {})).filter((h) => h.needsReconnection).map((h) => [h.externalId, h.evidence]));
     } catch {
-      return new Set();
+      return new Map();
     }
   }
 
@@ -118,7 +118,7 @@ export class ZernioAccountPort implements ProviderAccountPort {
   }
 }
 
-function toRecord(a: ZernioAccount, tenantRef: string, dead: ReadonlySet<string> = new Set()): ProviderAccountRecord {
+function toRecord(a: ZernioAccount, tenantRef: string, dead: ReadonlyMap<string, string> = new Map()): ProviderAccountRecord {
   return {
     externalId: a.externalId,
     channel: channelFor(a.platform),
@@ -126,6 +126,7 @@ function toRecord(a: ZernioAccount, tenantRef: string, dead: ReadonlySet<string>
     ...(a.displayName ? { displayName: a.displayName } : {}),
     ...(a.avatarUrl ? { avatarUrl: a.avatarUrl } : {}),
     isActive: a.isActive && !dead.has(a.externalId),
+    ...(dead.has(a.externalId) ? { statusNote: `zernio ${dead.get(a.externalId)}` } : {}),
     tenantRef,
   };
 }

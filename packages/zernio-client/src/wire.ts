@@ -36,8 +36,12 @@ const accountWire = z
 export const accountListResponse = z.object({ accounts: z.array(accountWire) }).loose();
 
 /**
- * `GET /v1/accounts/health`. Parsed defensively: an unrecognised shape yields NO findings (treated as healthy),
- * never a false "needs reconnection" that would block a working account.
+ * `GET /v1/accounts/health` (documented shape: `{ summary, accounts: [{ accountId, platform, username, status, canPost,
+ * canFetchAnalytics, tokenValid, needsReconnect, issues }] }`; per-account endpoint adds `tokenStatus: { valid, expiresAt, needsRefresh }`).
+ *
+ * Only EXPLICIT token signals mean "reconnect": `needsReconnect: true`, `tokenValid: false`, `tokenStatus.valid: false`.
+ * `status` (healthy|warning|error), `canPost` and `issues` are recorded as evidence but never infer a dead token: an `error`
+ * status can be a missing permission or an account-level warning. An unrecognised shape yields NO findings: it means "no explicit reauthorisation signal observed" (fail open), not a positive claim that the account is healthy.
  */
 const healthEntry = z
   .object({
@@ -47,7 +51,9 @@ const healthEntry = z
     status: optStr,
     needsReconnect: z.boolean().optional(),
     tokenValid: z.boolean().optional(),
-    tokenStatus: z.union([z.string(), z.object({ valid: z.boolean().optional(), isValid: z.boolean().optional() }).loose()]).optional(),
+    canPost: z.boolean().optional(),
+    tokenStatus: z.object({ valid: z.boolean().optional() }).loose().optional(),
+    issues: z.array(z.unknown()).optional(),
   })
   .loose();
 export const accountsHealthResponse = z.object({ accounts: z.array(healthEntry).default([]) }).loose();
@@ -55,13 +61,13 @@ export const accountsHealthResponse = z.object({ accounts: z.array(healthEntry).
 export function mapAccountHealth(w: z.infer<typeof healthEntry>): ZernioAccountHealth | undefined {
   const externalId = w.accountId ?? w._id ?? w.id;
   if (!externalId) return undefined;
-  const ts = w.tokenStatus;
-  const tokenBad =
-    w.tokenValid === false ||
-    (typeof ts === "object" && (ts.valid === false || ts.isValid === false)) ||
-    (typeof ts === "string" && /expired|revoked|invalid/i.test(ts));
-  const statusBad = typeof w.status === "string" && /disconnected|reconnect|expired|error/i.test(w.status);
-  return { externalId, needsReconnection: w.needsReconnect === true || tokenBad || statusBad };
+  const reasons: string[] = [];
+  if (w.needsReconnect === true) reasons.push("needsReconnect=true");
+  if (w.tokenValid === false) reasons.push("tokenValid=false");
+  if (w.tokenStatus?.valid === false) reasons.push("tokenStatus.valid=false");
+  const issues = (w.issues ?? []).filter((i): i is string => typeof i === "string").map((i) => i.slice(0, 120)).slice(0, 5);
+  const evidence = [`health.status=${w.status ?? "unknown"}`, ...(w.canPost !== undefined ? [`canPost=${w.canPost}`] : []), ...reasons, ...(issues.length ? [`issues=${issues.join("; ")}`] : [])].join(", ");
+  return { externalId, needsReconnection: reasons.length > 0, evidence };
 }
 
 export const currentUserResponse = z.object({ currentUserId: str }).loose();

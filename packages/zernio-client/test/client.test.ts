@@ -126,3 +126,33 @@ describe("transport", () => {
     expect(JSON.stringify({ m: (err as ZernioError).message, d: (err as ZernioError).details })).not.toContain("sk_super_secret_key_value");
   });
 });
+
+describe("account health (GET /v1/accounts/health, documented shape)", () => {
+  const withBody = (body: unknown) => {
+    const { client } = setup({ fetchImpl: (async () => new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } })) as typeof fetch });
+    return client.getAccountsHealth();
+  };
+  const acct = (over: Record<string, unknown>) => ({ accountId: "a1", platform: "twitter", username: "u", status: "healthy", canPost: true, canFetchAnalytics: true, tokenValid: true, needsReconnect: false, issues: [], ...over });
+
+  it("flags a connection only on an explicit token signal, and records the evidence", async () => {
+    const dead = await withBody({ summary: {}, accounts: [acct({ status: "error", tokenValid: false, needsReconnect: true, canPost: false, issues: ["Token expired"] })] });
+    expect(dead[0]).toMatchObject({ externalId: "a1", needsReconnection: true });
+    expect(dead[0]?.evidence).toContain("tokenValid=false");
+    expect(dead[0]?.evidence).toContain("needsReconnect=true");
+    expect(dead[0]?.evidence).toContain("issues=Token expired");
+    expect((await withBody({ accounts: [acct({ tokenValid: false })] }))[0]?.needsReconnection).toBe(true);
+    expect((await withBody({ accounts: [acct({ needsReconnect: true })] }))[0]?.needsReconnection).toBe(true);
+    expect((await withBody({ accounts: [acct({ tokenStatus: { valid: false } })] }))[0]?.needsReconnection).toBe(true);
+  });
+
+  it("never infers a dead token from status, canPost or issues alone (permission/warning cases stay connected)", async () => {
+    const r = await withBody({ accounts: [acct({ status: "error", canPost: false, issues: ["Missing tweet.write scope"] }), acct({ accountId: "a2", status: "warning", issues: ["Rate limit nearly reached"] })] });
+    expect(r.map((x) => x.needsReconnection)).toEqual([false, false]);
+    expect(r[0]?.evidence).toContain("canPost=false");
+  });
+
+  it("an unrecognised shape yields no findings instead of a false alarm", async () => {
+    expect(await withBody({})).toEqual([]);
+    expect(await withBody({ accounts: [{ nothing: true }] })).toEqual([]);
+  });
+});

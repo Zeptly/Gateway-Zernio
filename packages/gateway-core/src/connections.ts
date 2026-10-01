@@ -490,7 +490,7 @@ export async function reconcileConnections(ctx: ConnectionsContext, actor: Actor
       }
       let next: { status: string; statusReason: string | null } | undefined;
       if (!r) next = { status: "degraded", statusReason: "Account not found at provider" };
-      else if (!r.isActive) next = connection.status === "reauthorization_required" ? undefined : { status: "reauthorization_required", statusReason: "Provider reports the account as inactive" };
+      else if (!r.isActive) next = connection.status === "reauthorization_required" ? undefined : { status: "reauthorization_required", statusReason: r.statusNote ? `Provider reports the account as inactive (${r.statusNote})`.slice(0, 500) : "Provider reports the account as inactive" };
       else if (connection.status === "degraded") next = { status: "connected", statusReason: null };
       await ctx.db.transaction(async (tx) => {
         await tx
