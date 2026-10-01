@@ -29,3 +29,6 @@ A met (tests in both gateways). B met (architecture tests; one sanctioned doc ex
 - Gateway-Zernio: analytics slice, pagination, verify provisional network constraints, live validation.
 - Extract shared gateway-contract/core into a package (docs/SHARED-CODE.md in Gateway-Zernio).
 - Commands: `pnpm check` in each gateway (needs Postgres; TEST_DATABASE_URL); in MVP `npx vitest run src/test/provider-gateway*.test.ts`, `deno test --no-check -A supabase/functions/_shared/connector-boundary.test.ts supabase/functions/social-capability-invoke/index.test.ts`.
+
+## Update — canonical `x` and MVP routing checkpoint
+Canonical `x` is in the shared social contract (hashes/OpenAPI/vectors regenerated). MVP routes by gateway-qualified connection (zeptly-mvp `claude/funny-allen-b47ffl` @ 2533751a). Docker CI job and everything deployed/live remain unexecuted (PENDING_INFRASTRUCTURE). Human-gated next steps: deploy (Outstand redeploy after contract change; Zernio first deploy with env-only secrets), then the live draft-approve/X slice.
