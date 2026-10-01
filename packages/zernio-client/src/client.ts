@@ -138,7 +138,31 @@ export class ZernioClient {
       throw err;
     }
   }
+
+  /**
+   * Remove an already-PUBLISHED post from its network (`POST /v1/posts/{id}/unpublish`); Zernio keeps the post
+   * record (status "cancelled"). `DELETE /v1/posts/{id}` refuses published posts, so this is a separate operation.
+   * Idempotent: a post that no longer exists resolves successfully. Zernio does not support it on Instagram, TikTok
+   * or Snapchat (the call is refused here, before any request).
+   */
+  async unpublishPost(input: { externalId: string; channel: string; accountExternalId?: string }): Promise<void> {
+    const platform = platformFor(input.channel);
+    assertSlug(platform);
+    if (UNPUBLISH_UNSUPPORTED.has(input.channel)) {
+      throw new ZernioError("unsupported", `Unpublishing is not supported for ${input.channel}`, { retryable: false, ambiguous: false });
+    }
+    const body = { platform, ...(input.accountExternalId ? { accountId: input.accountExternalId } : {}) };
+    try {
+      await this.http.request(`/v1/posts/${encodeURIComponent(input.externalId)}/unpublish`, { method: "POST", body, mutating: true });
+    } catch (err) {
+      if (err instanceof ZernioError && err.kind === "not_found") return;
+      throw err;
+    }
+  }
 }
+
+/** Networks on which Zernio documents that unpublishing is NOT supported. */
+const UNPUBLISH_UNSUPPORTED: ReadonlySet<string> = new Set(["instagram", "tiktok", "snapchat"]);
 
 function assertSlug(platform: string): void {
   if (!/^[a-z][a-z0-9]{1,31}$/.test(platform)) throw new ZernioError("validation", "Invalid platform", { retryable: false, ambiguous: false });

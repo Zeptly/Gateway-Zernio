@@ -56,6 +56,10 @@ class InMemoryPort implements SocialPublishingPort {
   async deletePost(externalId: string): Promise<void> {
     this.store.delete(externalId);
   }
+  readonly unpublished: Array<{ externalId: string; accountExternalId: string }> = [];
+  async unpublishPost(input: { externalId: string; accountExternalId: string }): Promise<void> {
+    this.unpublished.push({ externalId: input.externalId, accountExternalId: input.accountExternalId });
+  }
 }
 
 const mastodonLike: NetworkDescriptor = {
@@ -108,6 +112,16 @@ describe("architecture B: Social Publishing on a non-Zernio-adapter gateway", ()
     // Same canonical contract object, no provider identifiers.
     expect(SocialPostSchema.safeParse(published).success).toBe(true);
     expect(JSON.stringify(published)).not.toMatch(/acme_acct_1"|acme_post_/);
+
+    // Unpublish (explicit removal of a LIVE post): same canonical contract, provider-neutral, idempotent.
+    const removed = await posts.unpublishPost(ctx, actor, post.id);
+    expect(port.unpublished).toEqual([{ externalId: "acme_post_1", accountExternalId: "acme_acct_1" }]);
+    expect(removed.status).toBe("cancelled");
+    expect(removed.targets[0]).toMatchObject({ status: "cancelled", platformPostUrl: "https://acme.example/p/1" });
+    const again = await posts.unpublishPost(ctx, actor, post.id);
+    expect(port.unpublished).toHaveLength(1);
+    expect(again.status).toBe("cancelled");
+    expect(SocialPostSchema.safeParse(removed).success).toBe(true);
 
     // The other gateway's catalog is authoritative: unsupported networks are rejected canonically.
     await expect(posts.createPost({ ...ctx, socialCatalog: new NetworkCatalog({}) }, actor, { content: { text: "x" }, targets: [{ connectionId: conn.id }] }, "idem-portability-2")).rejects.toMatchObject({

@@ -152,6 +152,13 @@ function registerAt(app: FastifyInstance, ctx: SocialPublishingContext, base: st
     "Cancels queued/scheduled publications, deleting provider-side scheduled copies where the network supports delete.",
     (actor, id) => posts.cancelPost(ctx, actor, id),
   );
+  command(
+    `${base}/posts/:id/unpublish`,
+    "post.unpublish",
+    "Unpublish a published post",
+    "Removes the already-published copies of this post from their networks (the provider-side post is deleted or unpublished). Targets become `cancelled` and keep their platform post id as evidence; the post record is kept. `cancel` cannot do this: it only reaches unpublished work. Idempotent; a failure part-way leaves the remaining targets `published` so a retry repeats only the remainder. Rejected with INVALID_STATE when no target is published.",
+    (actor, id) => posts.unpublishPost(ctx, actor, id),
+  );
 
   r.get(
     `${base}/posts/:id/publications`,

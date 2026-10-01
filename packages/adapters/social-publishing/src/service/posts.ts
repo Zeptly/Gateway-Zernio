@@ -5,6 +5,7 @@ import {
   socialPosts,
   type SocialPostTargetRow,
   socialPostTargets,
+  providerAccounts,
   socialPublications,
   socialSchedules,
   type Workspace,
@@ -518,6 +519,56 @@ export async function cancelPost(ctx: SocialPublishingContext, actor: Actor, id:
     await tx.update(socialSchedules).set({ status: "cancelled", updatedAt: ctx.now() }).where(eq(socialSchedules.postId, post.id));
     await recordAudit(tx, actor, { workspaceId: ws.id, action: "post.cancelled", resourceType: "post", resourceId: post.id, metadata: { previous: post.status } });
   });
+  return getPost(ctx, actor, id);
+}
+
+/**
+ * POST /v1/posts/:id/unpublish — remove the already-PUBLISHED copies of this post from their networks.
+ *
+ * `cancel` only reaches unpublished work; this is the separate, explicit operation for a post that is live. Each
+ * published target is removed through the provider adapter (`unpublishPost`), then marked `cancelled` - the same
+ * canonical state the gateway already uses for a post deleted on the network - keeping its platform post id/url as
+ * evidence, and the post status is recomputed. Nothing is deleted from the gateway's own records.
+ *
+ * Idempotent: a post whose published targets were all already removed returns unchanged. A failure part-way leaves
+ * the targets not yet removed `published`, so a retry only repeats the remainder.
+ */
+export async function unpublishPost(ctx: SocialPublishingContext, actor: Actor, id: string): Promise<SocialPost> {
+  const ws = actor.workspace;
+  const { post, targets } = await loadPost(ctx.db, ws, id);
+  const live = targets.filter((t) => t.status === "published");
+  if (live.length === 0) {
+    // A target cancelled AFTER it had a platform post id was unpublished earlier: replay is a no-op.
+    if (targets.length > 0 && targets.some((t) => t.status === "cancelled" && t.platformPostId)) return getPost(ctx, actor, id);
+    throw new GatewayError("INVALID_STATE", "The post has no published target to unpublish", { details: { status: post.status } });
+  }
+  const pubIds = [...new Set(live.map((t) => t.publicationId).filter((x): x is string => !!x))];
+  const pubs = pubIds.length ? await ctx.db.select().from(socialPublications).where(and(inArray(socialPublications.id, pubIds), eq(socialPublications.workspaceId, ws.id))) : [];
+  const accounts = await ctx.db
+    .select({ connectionId: providerAccounts.connectionId, externalId: providerAccounts.externalId })
+    .from(providerAccounts)
+    .where(and(inArray(providerAccounts.connectionId, live.map((t) => t.connectionId)), eq(providerAccounts.workspaceId, ws.id)));
+  for (const t of live) {
+    const pub = pubs.find((p) => p.id === t.publicationId);
+    const account = accounts.find((a) => a.connectionId === t.connectionId);
+    if (!pub?.providerPostId || !account) throw new GatewayError("INVALID_STATE", "The provider reference for a published target is missing; it cannot be unpublished", { details: { targetId: t.id } });
+    try {
+      await ctx.publishing.unpublishPost({ externalId: pub.providerPostId, network: t.network as SocialNetwork, accountExternalId: account.externalId });
+    } catch (err) {
+      throw toGatewayError(err);
+    }
+    await ctx.db.transaction(async (tx) => {
+      await tx
+        .update(socialPostTargets)
+        .set({ status: "cancelled", errorCode: null, errorMessage: "Removed from the network by the workspace (unpublished)", updatedAt: ctx.now() })
+        .where(and(eq(socialPostTargets.id, t.id), eq(socialPostTargets.status, "published")));
+      const rest = await tx.select({ status: socialPostTargets.status }).from(socialPostTargets).where(eq(socialPostTargets.publicationId, pub.id));
+      const published = rest.filter((r) => r.status === "published").length;
+      if (published === 0) await tx.update(socialPublications).set({ status: rest.every((r) => r.status === "cancelled") ? "cancelled" : "partially_published", updatedAt: ctx.now() }).where(eq(socialPublications.id, pub.id));
+      await recomputePostStatus(tx, post.id, ws.id, { service: "worker", requestId: actor.requestId });
+      await recordAudit(tx, actor, { workspaceId: ws.id, action: "post.unpublished", resourceType: "post", resourceId: post.id, metadata: { targetId: t.id, network: t.network, previous: "published" } });
+    });
+  }
   return getPost(ctx, actor, id);
 }
 

@@ -15,6 +15,7 @@ Provider authority: <https://docs.zernio.com/> (OpenAPI 3.1, API version **1.181
 | Publish | `POST /v1/posts` with `publishNow: true` (synchronous; per-platform results in the response) |
 | Schedule | `POST /v1/posts` with `scheduledFor` + `timezone: "UTC"`. No scheduling horizon is documented, so there is no rolling hand-off |
 | Cancel / delete | `DELETE /v1/posts/{id}` (any status except `published`) |
+| Unpublish (remove a published post from the network) | `POST /v1/posts/{id}/unpublish` body `{platform, accountId?}`; not supported for instagram, tiktok, snapchat (refused before any request). Gateway route: `POST /v1/social/publishing/posts/{id}/unpublish` |
 | Idempotency | `Idempotency-Key` on `POST /v1/posts` (24 h, key-only match, replay → 200 + original post; in flight → 409 `idempotency_conflict` + `Retry-After`) and on `POST /v1/profiles` |
 | Content dedup | Zernio rejects identical content to the same account within 24 h (409 `existingPostId`): surfaced as a definitive, non-retryable conflict |
 | Webhooks | `X-Zernio-Signature` = lowercase hex HMAC-SHA256 of the raw body; `X-Zernio-Event-Id`/payload `id` is the stable dedupe key. Used: `post.platform.published`, `post.platform.failed`, `account.disconnected` (unintentional → `reauthorization_required`), `webhook.test`. Everything else is acknowledged and ignored |

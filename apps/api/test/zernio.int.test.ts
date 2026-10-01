@@ -195,6 +195,47 @@ describe("publishing and scheduling on Zernio", () => {
   });
 });
 
+describe("unpublish (remove a LIVE post from its network)", () => {
+  it("unpublishes a published X post through Zernio's unpublish, keeps the evidence, and is idempotent", async () => {
+    const [c] = await h.connect(A, "x");
+    const created = await draft(A, [c.id], "remove me");
+    await h.call(A, "POST", `${base}/posts/${created.json.id}/publish`, undefined, { "idempotency-key": idem() });
+    await h.drain();
+    const live = await h.call(A, "GET", `${base}/posts/${created.json.id}`);
+    expect(live.json.status).toBe("published");
+    expect(live.json.targets[0].platformPostUrl).toBeTruthy();
+
+    // cancel cannot reach a published post
+    const cancel = await h.call(A, "POST", `${base}/posts/${created.json.id}/cancel`, undefined, { "idempotency-key": idem() });
+    expect(cancel.status).toBe(409);
+
+    const key = idem();
+    const un = await h.call(A, "POST", `${base}/posts/${created.json.id}/unpublish`, undefined, { "idempotency-key": key });
+    expect(un.status).toBe(202);
+    const sent = h.fake.requests.find((r) => r.method === "POST" && r.path.endsWith("/unpublish"));
+    expect(sent?.body).toMatchObject({ platform: "twitter" });
+    const after = await h.call(A, "GET", `${base}/posts/${created.json.id}`);
+    expect(after.json.status).toBe("cancelled");
+    expect(after.json.targets[0]).toMatchObject({ status: "cancelled" });
+    expect(after.json.targets[0].platformPostUrl).toBe(live.json.targets[0].platformPostUrl);
+    expect(JSON.stringify({ ...after.json, targets: after.json.targets.map((t: object) => ({ ...t, platformPostUrl: undefined })) })).not.toMatch(/twitter/);
+
+    // same key replays; a fresh key is a no-op (nothing published left), not a second provider call
+    const replay = await h.call(A, "POST", `${base}/posts/${created.json.id}/unpublish`, undefined, { "idempotency-key": key });
+    expect(replay.status).toBe(202);
+    await h.call(A, "POST", `${base}/posts/${created.json.id}/unpublish`, undefined, { "idempotency-key": idem() });
+    expect(h.fake.requests.filter((r) => r.path.endsWith("/unpublish")).length).toBe(1);
+  });
+
+  it("refuses to unpublish a post that was never published, and another workspace cannot reach the post", async () => {
+    const [c] = await h.connect(A, "linkedin");
+    const created = await draft(A, [c.id]);
+    const un = await h.call(A, "POST", `${base}/posts/${created.json.id}/unpublish`, undefined, { "idempotency-key": idem() });
+    expect(un.status).toBe(409);
+    expect(h.fake.requests.some((r) => r.path.endsWith("/unpublish"))).toBe(false);
+  });
+});
+
 describe("canonical x (Zernio calls it twitter)", () => {
   it("connects X as canonical `x`; the provider name never reaches the API", async () => {
     const [c] = await h.connect(A, "x");

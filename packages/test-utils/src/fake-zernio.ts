@@ -193,6 +193,19 @@ export class FakeZernio {
     }
 
     if (path === "/v1/posts" && method === "POST") return this.createPost(headers, b);
+    const unpub = /^\/v1\/posts\/([^/]+)\/unpublish$/.exec(path);
+    if (unpub && method === "POST") {
+      const p = this.posts.get(decodeURIComponent(unpub[1] as string));
+      if (!p) return json(404, { error: "Post not found" });
+      const platform = String(b.platform ?? "");
+      if (!platform) return json(400, { error: "platform is required" });
+      if (["instagram", "tiktok", "snapchat"].includes(platform)) return json(400, { error: `Unpublish is not supported on ${platform}` });
+      const targets = p.platforms.filter((t) => t.platform === platform && (!b.accountId || t.accountId === b.accountId) && t.status === "published");
+      if (targets.length === 0) return json(409, { error: "No published target on that platform" });
+      for (const t of targets) t.status = "cancelled";
+      if (p.platforms.every((t) => t.status === "cancelled")) (p as { status: string }).status = "cancelled";
+      return json(200, { message: "Post unpublished", post: p });
+    }
     const post = /^\/v1\/posts\/([^/]+)$/.exec(path);
     if (post) {
       const id = decodeURIComponent(post[1] as string);
