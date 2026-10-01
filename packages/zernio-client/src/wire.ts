@@ -41,7 +41,7 @@ export const accountListResponse = z.object({ accounts: z.array(accountWire) }).
  *
  * Only EXPLICIT token signals mean "reconnect": `needsReconnect: true`, `tokenValid: false`, `tokenStatus.valid: false`.
  * `status` (healthy|warning|error), `canPost` and `issues` are recorded as evidence but never infer a dead token: an `error`
- * status can be a missing permission or an account-level warning. An unrecognised shape yields NO findings (healthy).
+ * status can be a missing permission or an account-level warning. An unrecognised shape yields NO findings: it means "no explicit reauthorisation signal observed" (fail open), not a positive claim that the account is healthy.
  */
 const healthEntry = z
   .object({

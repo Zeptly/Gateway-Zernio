@@ -40,7 +40,7 @@ Provider authority: <https://docs.zernio.com/> (OpenAPI 3.1, API version **1.181
 
 - **Zernio refreshes tokens itself**; when a refresh cannot recover an account the provider call returns `401 … Token expired or revoked`
   (`TOKEN_EXPIRED`) and the account must be re-authorised. `GET /v1/accounts` keeps such an account `isActive: true`, so listing alone cannot see it.
-- **Detection.** `ZernioAccountPort.listAccounts` also reads `GET /v1/accounts/health` (best effort: a failing health call never downgrades an account). Documented shape: `{ summary:{total,healthy,warning,error,needsReconnect}, accounts:[{accountId,platform,username,status,canPost,canFetchAnalytics,tokenValid,needsReconnect,issues}] }`; the per-account endpoint `GET /v1/accounts/{accountId}/health` adds `tokenStatus:{valid,expiresAt,expiresIn,needsRefresh}`, `permissions` and `recommendations`. **Only explicit token signals flip a connection** (`needsReconnect=true`, `tokenValid=false`, `tokenStatus.valid=false`); `status` (healthy|warning|error), `canPost` and `issues` are recorded in the connection's status reason as evidence but never infer a dead token (an `error` can be a missing permission). Unrecognised shapes read as healthy.
+- **Detection.** `ZernioAccountPort.listAccounts` also reads `GET /v1/accounts/health` (best effort: a failing health call never downgrades an account). Documented shape: `{ summary:{total,healthy,warning,error,needsReconnect}, accounts:[{accountId,platform,username,status,canPost,canFetchAnalytics,tokenValid,needsReconnect,issues}] }`; the per-account endpoint `GET /v1/accounts/{accountId}/health` adds `tokenStatus:{valid,expiresAt,expiresIn,needsRefresh}`, `permissions` and `recommendations`. **Only explicit token signals flip a connection** (`needsReconnect=true`, `tokenValid=false`, `tokenStatus.valid=false`); `status` (healthy|warning|error), `canPost` and `issues` are recorded in the connection's status reason as evidence but never infer a dead token (an `error` can be a missing permission). An unrecognised health shape fails open: it is read as "no explicit reauthorisation signal observed", never as positively healthy, and changes no connection state.
   `reconcile_connections` runs every 10 minutes (X access tokens live ~2 h) and flips a dead account to `reauthorization_required`.
   An `account.disconnected` (unintentional) webhook does the same immediately.
 - **Fail closed, with a precise error.** A provider `401/403` on publish or unpublish flags the connection `reauthorization_required` and returns
@@ -58,10 +58,15 @@ Provider authority: <https://docs.zernio.com/> (OpenAPI 3.1, API version **1.181
 - Do not infer expired token, revoked token, missing scope, plan limit or provider-side disconnect without live evidence. The only direct evidence is Zernio's `401 Token expired or revoked for twitter. Please reconnect your account.` on `POST /v1/posts/{id}/unpublish`.
 - Zernio documents `account.disconnected` webhooks with `disconnectionType` intentional vs unintentional (the latter covers expiry/revocation); the gateway did not log event types at the time.
 
-### Live-test protocol: health snapshots (read-only, add to every Zernio live connection test)
-```
-before publish:   GET /v1/accounts/{accountId}/health
-after publish:    GET /v1/accounts/{accountId}/health
-on any 401/403:   GET /v1/accounts/{accountId}/health  and  GET /v1/accounts/health
-```
-Record, per snapshot: `status`, `tokenStatus.valid/expiresAt/needsRefresh`, `permissions.canPost/canFetchAnalytics/missingRequired`, `issues`, `recommendations` (no tokens). This separates: token invalid/expired; reconnect required; posting permission missing; analytics permission missing; account-level warning/error; and a provider-side disconnect (cross-check the `account.disconnected` delivery log). Since this change, a reconcile that flips a connection also stores the health evidence it saw in the connection's `status_reason`.
+### Next Zernio live-test acceptance protocol (NOT yet executed; the parser change is repo-only until it passes)
+Railway stays pinned to the accepted runtime `563465fea0563c13b5ef166cedb06887cebfb590` (tag `accepted/provider-gateway-2026-10-01`) throughout.
+1. Capture the RAW aggregate `GET /v1/accounts/health` response for the connected X account (no tokens).
+2. Verify the parser against that real response shape (`accounts[]`, `accountId`, `tokenValid`, `needsReconnect`; fields actually present).
+3. Capture per-account health before publish: `GET /v1/accounts/{accountId}/health`.
+4. Publish.
+5. Capture per-account health after publish.
+6. If a lapse occurs, capture health immediately (per-account and aggregate), before any reconnect.
+7. Confirm the evidence written to the connection's `status_reason` when a reconcile changes state.
+8. Only after successful validation should a Railway re-pin of the new parser commit be considered.
+
+Record per snapshot: `status`, `tokenStatus.valid/expiresAt/needsRefresh`, `permissions.canPost/canFetchAnalytics/missingRequired`, `issues`, `recommendations`. This separates: token invalid/expired; reconnect required; posting permission missing; analytics permission missing; account-level warning/error; and a provider-side disconnect (cross-check the `account.disconnected` delivery log). A reconcile that flips a connection stores the health evidence it saw in `status_reason`.
