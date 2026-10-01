@@ -130,7 +130,7 @@ export async function buildApp(opts: BuildAppOptions): Promise<FastifyInstance> 
 
   app.setErrorHandler((err, req, reply) => {
     if (isGatewayError(err)) {
-      if (err.status >= 500) req.log.error({ err, code: err.code }, "request failed");
+      if (err.status >= 500) req.log.error({ err, code: err.code, details: err.details }, "request failed");
       else req.log.info({ code: err.code }, "request rejected");
       if (err.code === "PROVIDER_RATE_LIMITED" && typeof err.details?.retryAfterSeconds === "number") reply.header("retry-after", String(err.details.retryAfterSeconds));
       return reply.status(err.status).send(err.toJSON(req.id));
