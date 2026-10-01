@@ -1,0 +1,14 @@
+{
+  "name": "@zeptly-gateway/zernio-client",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@zeptly-gateway/gateway-contract": "workspace:*",
+    "@zeptly-gateway/observability": "workspace:*",
+    "zod": "^4.1.5"
+  }
+}

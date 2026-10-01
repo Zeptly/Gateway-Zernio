@@ -1,0 +1,19 @@
+{
+  "name": "@zeptly-gateway/zernio-gateway",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@zeptly-gateway/gateway-contract": "workspace:*",
+    "@zeptly-gateway/gateway-core": "workspace:*",
+    "@zeptly-gateway/database": "workspace:*",
+    "@zeptly-gateway/observability": "workspace:*",
+    "@zeptly-gateway/zernio-client": "workspace:*",
+    "@zeptly-gateway/social-publishing": "workspace:*",
+    "drizzle-orm": "^0.45.3",
+    "zod": "^4.1.5"
+  }
+}

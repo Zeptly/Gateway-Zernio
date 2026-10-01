@@ -1,0 +1,139 @@
+{
+  "scheme": "ZS1-HMAC-SHA256",
+  "contractVersion": "1",
+  "note": "Published test vectors. The secret is a test value and protects nothing. Every implementation (gateways, Zeptly client) must reproduce canonical and signature byte-for-byte.",
+  "secret": "zs1-published-test-vector-secret-not-a-credential",
+  "nowUnixSeconds": 1790000000,
+  "maxSkewSeconds": 300,
+  "vectors": [
+    {
+      "name": "service-get-no-workspace",
+      "input": {
+        "timestamp": "1790000000",
+        "method": "GET",
+        "url": "/v1/gateway",
+        "workspaceId": "",
+        "caller": "zeptly-app",
+        "agent": "",
+        "body": ""
+      },
+      "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "canonical": "ZS1\n1790000000\nGET\n/v1/gateway\n\nzeptly-app\n\ne3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "signature": "v1=6826d450b230b035941623bbec4fedcfb8c65fe55c5ac751631abc48ccc6f96d"
+    },
+    {
+      "name": "workspace-get-with-query",
+      "input": {
+        "timestamp": "1790000000",
+        "method": "GET",
+        "url": "/v1/capabilities?channel=linkedin",
+        "workspaceId": "ws_123",
+        "caller": "zeptly-app",
+        "agent": "",
+        "body": ""
+      },
+      "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "canonical": "ZS1\n1790000000\nGET\n/v1/capabilities?channel=linkedin\nws_123\nzeptly-app\n\ne3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "signature": "v1=6aff50cac5649a235c60e3a933957451764cbbaa045cbd1579194ad6421947bc"
+    },
+    {
+      "name": "workspace-post-json-body",
+      "input": {
+        "timestamp": "1790000000",
+        "method": "POST",
+        "url": "/v1/social/publishing/posts",
+        "workspaceId": "ws_123",
+        "caller": "zeptly-app",
+        "agent": "agent:director",
+        "body": "{\"content\":{\"text\":\"hello\"}}"
+      },
+      "bodySha256": "5ad5a2d14097887b511614c3a3b6efb22f5380369c0d2480d3295667bae45926",
+      "canonical": "ZS1\n1790000000\nPOST\n/v1/social/publishing/posts\nws_123\nzeptly-app\nagent:director\n5ad5a2d14097887b511614c3a3b6efb22f5380369c0d2480d3295667bae45926",
+      "signature": "v1=9a69c7b39345e2e01a5e0020dbf267a03a28bebb503ff3c4d340c87d99b0aaaf"
+    },
+    {
+      "name": "lowercase-method-normalised",
+      "input": {
+        "timestamp": "1790000000",
+        "method": "post",
+        "url": "/v1/connections",
+        "workspaceId": "ws_abc.def:1",
+        "caller": "zeptly-app",
+        "agent": "",
+        "body": "{}"
+      },
+      "bodySha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "canonical": "ZS1\n1790000000\nPOST\n/v1/connections\nws_abc.def:1\nzeptly-app\n\n44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "signature": "v1=75031c4d9edd99d4318694a06dfe9aa3cfeb5c359147df1fc26fb0c4de52029b"
+    },
+    {
+      "name": "utf8-body",
+      "input": {
+        "timestamp": "1790000000",
+        "method": "POST",
+        "url": "/v1/social/publishing/posts",
+        "workspaceId": "ws_123",
+        "caller": "zeptly-app",
+        "agent": "",
+        "body": "{\"content\":{\"text\":\"café ☕ 日本語\"}}"
+      },
+      "bodySha256": "ff1694b2ebd2cbdb852c7368ed584fd1e7999e019c2159445b281056aa86d387",
+      "canonical": "ZS1\n1790000000\nPOST\n/v1/social/publishing/posts\nws_123\nzeptly-app\n\nff1694b2ebd2cbdb852c7368ed584fd1e7999e019c2159445b281056aa86d387",
+      "signature": "v1=69518b561ac26d6debb397ae3616e65156bb984974020e73d78f1785c8870bb2"
+    }
+  ],
+  "mustReject": [
+    {
+      "name": "wrong-workspace",
+      "base": "workspace-post-json-body",
+      "override": {
+        "workspaceId": "ws_other"
+      }
+    },
+    {
+      "name": "wrong-path",
+      "base": "workspace-post-json-body",
+      "override": {
+        "url": "/v1/social/publishing/posts?x=1"
+      }
+    },
+    {
+      "name": "wrong-method",
+      "base": "workspace-post-json-body",
+      "override": {
+        "method": "PUT"
+      }
+    },
+    {
+      "name": "wrong-caller",
+      "base": "workspace-post-json-body",
+      "override": {
+        "caller": "other-service"
+      }
+    },
+    {
+      "name": "wrong-agent",
+      "base": "workspace-post-json-body",
+      "override": {
+        "agent": "agent:other"
+      }
+    },
+    {
+      "name": "wrong-body",
+      "base": "workspace-post-json-body",
+      "override": {
+        "body": "{\"content\":{\"text\":\"HELLO\"}}"
+      }
+    },
+    {
+      "name": "skew-too-old",
+      "base": "workspace-post-json-body",
+      "nowOffsetSeconds": 301
+    },
+    {
+      "name": "skew-too-new",
+      "base": "workspace-post-json-body",
+      "nowOffsetSeconds": -301
+    }
+  ]
+}

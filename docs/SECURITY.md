@@ -1,0 +1,92 @@
+# Security
+
+## Trust boundaries
+
+| Party | Trusted for | Never trusted for |
+| --- | --- | --- |
+| Zeptly backend (signed) | Identifying the workspace and caller | Asserting ownership of connections/posts/provider ids |
+| Zernio API | Provider state (after authenticated GET) | Workspace ownership |
+| Zernio webhooks (signed) | Event facts about provider references we already map | Establishing ownership; unknown references are ignored |
+| End-user browser (callback) | Nothing beyond presenting the state token | — |
+
+## Service-to-service authentication (Zeptly → Zernio Gateway)
+
+Scheme `ZS1-HMAC-SHA256` with the shared `ZEPTLY_SERVICE_SECRET` (≥ 32 chars). Implemented in `packages/gateway-core/src/auth.ts` (Gateway Contract v1: every Zeptly gateway uses the same scheme).
+
+Headers: `X-Zeptly-Caller`, `X-Zeptly-Workspace-Id` (workspace routes), optional `X-Zeptly-Agent`, `X-Zeptly-Timestamp` (unix seconds, ±300 s), `X-Zeptly-Signature: v1=<hex>`, optional `X-Request-Id`.
+
+```
+canonical = "ZS1\n" + timestamp + "\n" + METHOD + "\n" + path+query + "\n"
+          + workspaceId + "\n" + caller + "\n" + agent + "\n" + hex(sha256(raw body))
+signature = "v1=" + hex(HMAC-SHA256(ZEPTLY_SERVICE_SECRET, canonical))
+```
+
+- The workspace, caller, agent, path, method and body are all signed, so a captured request cannot be replayed against another workspace, path or body (tested).
+- The workspace comes only from the signed header. No route accepts a workspace id in the path or body, so a mismatch between the two cannot occur.
+- Routes are `workspace` (default), `service` (`/v1/gateway*` and `/v1/admin/*`: authenticated, no workspace, no tenant content) or `public` (`/health`, `/ready`, `/openapi.json`, `/v1/webhooks/zernio` which is HMAC-verified, and `/v1/connect/callback/:state` which is state-token bound).
+- **Replay window.** A request can be replayed verbatim within ±5 minutes. Mutating commands are nevertheless idempotent (Idempotency-Key), so a replay cannot create duplicates.
+- **Migration path.** `ServiceAuthenticator` is an interface. An asymmetric implementation (Ed25519-signed requests, or JWT service identity verified against a JWKS) can replace `HmacServiceAuthenticator` in `apps/api/src/main.ts` without changing any endpoint.
+
+### Key rotation
+
+1. Generate a new secret: `openssl rand -base64 48`.
+2. On the Zernio Gateway (API service), set `ZEPTLY_SERVICE_SECRET_PREVIOUS=<old>` and `ZEPTLY_SERVICE_SECRET=<new>`, then redeploy. Both secrets are now accepted.
+3. Switch Zeptly to sign with the new secret, and deploy Zeptly.
+4. Remove `ZEPTLY_SERVICE_SECRET_PREVIOUS` and redeploy.
+
+The Zernio webhook secret rotates by updating it in Zernio's webhook settings and in `ZERNIO_WEBHOOK_SECRET` together. Deliveries sent during the gap fail with 401 and are retried by Zernio. Rotate the Zernio API key in the Zernio dashboard, then update `ZERNIO_API_KEY` on both services.
+
+## Workspace isolation
+
+- Every tenant-owned row has `workspace_id`. Every service function takes the authenticated `Actor` and filters by `workspace_id`. Tenancy guards live in `packages/gateway-core/src/tenancy.ts`, below every capability package.
+- `request workspace → gateway connection → Zernio provider account mapping → operation` is verified on every provider operation. The join requires `provider_accounts.workspace_id = gateway_connections.workspace_id = actor workspace`. Capability services receive provider account ids only from this join; the provider-neutral ports (`SocialPublishingPort`, …) never accept a workspace, so an adapter has no way to widen access.
+- `provider_accounts` has `UNIQUE(provider, external_id)`. A provider account belongs to at most one workspace. Provisioning that returns an account already owned elsewhere is refused (`CONNECTION_OWNERSHIP_CONFLICT`) and audited.
+- Ownership is never inferred from network or username. Adoption during reconciliation requires both the workspace's opaque tenant ref and a recent provisioning session for that network.
+- Other workspaces' resources return **404**, not 403. There is no existence oracle.
+- Webhooks resolve provider references only through stored mappings. Unknown references are ignored (no adoption through webhooks). gateway-core resolves `account.reauthorization_required`; Social Publishing matches `social.publication_outcome` only against publications this gateway created.
+- **Workspace → Zernio profile.** Each workspace maps to exactly one Zernio profile named `ZERNIO_PROFILE_PREFIX + <opaque tenant ref>`. The Zeptly workspace id is never sent to Zernio (tested). Zernio's hosted OAuth creates the account *before* redirecting the browser back with `profileId` and `accountId` query parameters. Those parameters are untrusted: the account port resolves the account through the profile, derives its tenant ref **from the profile name**, and gateway-core refuses to adopt any account whose tenant ref is not the requesting workspace's (`connection.tenant_mismatch` audit event; forged-callback test in `apps/api/test/zernio.int.test.ts`). Accounts in profiles this gateway did not create carry a sentinel tenant ref that matches no workspace.
+- Automated cross-tenant tests are in `apps/api/test/zernio.int.test.ts`. They cover connections, posts, raw provider ids used as connection ids, forged provider callbacks, and webhooks for another tenant's account. **Automated/mocked only**: no live Zernio isolation test has been run.
+
+## Provider credentials and secrets
+
+- `ZERNIO_API_KEY` and `ZERNIO_WEBHOOK_SECRET` are server-side environment variables only. They never reach Zeptly or any browser.
+- Bluesky app passwords (credentials strategy) are forwarded once over TLS and **never persisted or logged**. The redaction key list covers `appPassword`, `app_password` and `credentials`.
+- The OAuth state token is stored only as a SHA-256 hash. This gateway holds no provider session token for Zernio (the redirect carries the result), so `providerSessionToken` is cleared at completion.
+- Zernio responses are parsed by private tolerant schemas (`packages/zernio-client/src/wire.ts`) that map only the fields the gateway needs, so any token-bearing field Zernio might add never reaches a typed result, the API or the database. `test/architecture.test.ts` asserts the wire schemas are not importable outside the client and that no route source names provider identifiers.
+
+## Logging and redaction
+
+Pino JSON logs, implemented in `packages/observability`:
+
+- Key-based redaction: authorization, cookie, signatures, token, password, secret, credentials, `upload_url`, and similar keys.
+- Value-based redaction of registered secrets: the API key, webhook secret and service secrets.
+- Pattern redaction: `Bearer …`, `postgres://user:pass@`, and `?session=`, `?signature=` and `X-Amz-*` query values.
+- Request URLs are logged with the callback state token and query secrets scrubbed.
+- Stored webhook payloads are redacted and purged after 30 days. Provider error messages are redacted and truncated before they are persisted or returned under `details.provider`.
+
+## Webhook security
+
+HMAC-SHA256 over the raw bytes in constant time, with the `sha256=<64 hex>` format required. An invalid signature gets 401 and nothing is stored or processed. Receipts are deduplicated by a unique event identity. Only posts created by this gateway can trigger an Zernio call, which is the amplification protection. The service refuses to start without `ZERNIO_WEBHOOK_SECRET` (fail closed).
+
+## Architecture-level guarantees (tests)
+
+| Guarantee | Test |
+| --- | --- |
+| Zernio wire types do not escape `zernio-client`; only `zernio-gateway` and `adapters/*/src/zernio` import the client | `test/architecture.test.ts` |
+| gateway-core (tenancy, auth, ownership) imports no provider or capability code | `test/architecture.test.ts` |
+| API responses and OpenAPI expose no credentials or provider ids | `apps/api/test/gateway.int.test.ts`, `apps/api/test/zernio.int.test.ts` |
+| Provider account ids cannot establish workspace access (raw ids as connection ids, forged callbacks, webhooks for another tenant's account) | `apps/api/test/zernio.int.test.ts` |
+| Capability services cannot bypass tenant ownership (they are driven only through workspace-scoped `Actor`s and stored mappings; verified with a non-Zernio port) | `packages/adapters/social-publishing/test/portability.int.test.ts` |
+
+## Other controls
+
+- **SSRF.** Media URLs must be HTTPS and public. The host is DNS-resolved and checked against private, loopback, link-local, CGNAT and multicast ranges. The gateway only *references* the URL: Zernio fetches it itself at publish time, so size caps declared by the request are validated here but enforced by Zernio.
+- **Open redirect.** Provisioning `returnUrl` origins must be listed in `ALLOWED_RETURN_URL_ORIGINS`, which is required in production.
+- **Body size.** 1 MB JSON limit. Validation is strict Zod, and unknown option keys are rejected.
+- **Audit.** `audit_events` records connection initiated/established/reconnect-required/removed, post accepted, publication requested/succeeded/failed/partial, schedule created/changed, cancellations, messages sent/failed and reconciliation changes. Each event carries the calling service, `X-Zeptly-Agent` and the request id. Content bodies and credentials are never stored in audit metadata.
+
+## Known residual risks
+
+- **Shared secret.** Anyone holding `ZEPTLY_SERVICE_SECRET` can act for any workspace. That is inherent to service-to-service trust: Zeptly owns user permissions. Protect the secret and migrate to asymmetric identity when needed.
+- **Admin routes** use the same service credential. They expose diagnostics only, not tenant content.
+- **No request rate limiting in V1.** Railway's edge and the Zeptly caller are trusted. Webhook signature verification is cheap and happens before any database write.
