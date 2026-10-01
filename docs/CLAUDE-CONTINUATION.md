@@ -1,3 +1,9 @@
+> **CLOSEOUT 2026-10-01 — SUPERSEDES the "RC1 / pinned runtime" statements below.**
+> - **Accepted runtime now: `563465fea0563c13b5ef166cedb06887cebfb590`** (API and Worker both pinned; tag `accepted/provider-gateway-2026-10-01`). RC1 `4254506` is history. It adds unpublish, authorisation-lapse detection, `REAUTHORIZATION_REQUIRED` and safe reconnect (`reconnectAccountId`).
+> - **`main` = `a59a3182bb3373c7ae0b2cb8a1aeb190cea8a0eb`** (merge of PR #3 over `6e2eaff` = PR #2). It is AHEAD of the deployed runtime by repo-only changes: the stricter health parser (reconnect only on `needsReconnect=true`, `tokenValid=false` or `tokenStatus.valid=false`; `status:error`, `canPost:false`, issues are evidence only; unknown shapes = no signal observed, fail open), health evidence stored in `status_reason`, and docs. The deployed `563465f` still has the older, looser parser.
+> - **Do not re-pin Railway to `main`** until the live-test protocol in `docs/ZERNIO.md` ("Next Zernio live-test acceptance protocol") has been executed: capture the raw aggregate `/v1/accounts/health`, verify the parser against it, per-account health before/after publish, capture on any lapse, confirm `status_reason`, then consider a re-pin. Never use "Redeploy" on an old deployment (it reuses old snapshots); pin by `commitSha`.
+> - X token lapse: root cause NOT confirmed; no live health capture exists. Staging connection torn down (disconnected); gateway account removed. Full programme handoff: Zeptly `docs/CLAUDE-CONTINUATION.md` ("FINAL HANDOFF").
+
 # Gateway-Zernio — handoff (2026-10-01)
 
 **GATEWAY-ZERNIO RC1 ACCEPTED FOR ZEPTLY STAGING**
