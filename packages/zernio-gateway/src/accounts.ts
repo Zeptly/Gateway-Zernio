@@ -1,6 +1,6 @@
 import { UpstreamError } from "@zeptly-gateway/gateway-contract";
 import type { PendingProviderConnection, ProviderAccountPort, ProviderAccountRecord, ProviderCallbackResult } from "@zeptly-gateway/gateway-core";
-import { ZERNIO, type ZernioAccount, type ZernioClient } from "@zeptly-gateway/zernio-client";
+import { channelFor, ZERNIO, type ZernioAccount, type ZernioClient } from "@zeptly-gateway/zernio-client";
 
 const ID = /^[A-Za-z0-9_-]{8,64}$/;
 /** Sentinel tenant ref for accounts in profiles this gateway did not create: matches no workspace. */
@@ -55,7 +55,7 @@ export class ZernioAccountPort implements ProviderAccountPort {
   async getPendingConnection(session: string): Promise<PendingProviderConnection> {
     const account = await this.resolveSession(session);
     return {
-      channel: account.platform,
+      channel: channelFor(account.platform),
       options: [
         {
           id: account.externalId,
@@ -103,7 +103,7 @@ export class ZernioAccountPort implements ProviderAccountPort {
 function toRecord(a: ZernioAccount, tenantRef: string): ProviderAccountRecord {
   return {
     externalId: a.externalId,
-    channel: a.platform,
+    channel: channelFor(a.platform),
     ...(a.username ? { username: a.username } : {}),
     ...(a.displayName ? { displayName: a.displayName } : {}),
     ...(a.avatarUrl ? { avatarUrl: a.avatarUrl } : {}),

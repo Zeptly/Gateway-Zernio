@@ -16,6 +16,11 @@ export interface ZernioAccount {
   avatarUrl?: string;
   isActive: boolean;
   needsReconnection: boolean;
+  /**
+   * Account-level posting ceiling in characters, when Zernio reports one (X Premium accounts).
+   * Parsed tolerantly from account metadata; field names are UNVERIFIED against live data.
+   */
+  maxPostChars?: number;
 }
 
 export interface ZernioTargetState {

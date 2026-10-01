@@ -5,10 +5,11 @@ import { ZERNIO_SOCIAL_NETWORKS } from "../src/zernio/index.js";
 describe("V1 network boundary", () => {
   it("exposes exactly the networks in Social Publishing Contract v1", () => {
     expect(Object.keys(ZERNIO_SOCIAL_NETWORKS).sort()).toEqual([...SOCIAL_NETWORKS].sort());
-    expect(SOCIAL_NETWORKS).toHaveLength(8);
+    expect(SOCIAL_NETWORKS).toHaveLength(9);
+    expect(SOCIAL_NETWORKS).toContain("x");
   });
 
-  it.each(["x", "twitter", "reddit", "google_business", "vimeo"])("rejects BYOK network %s at the contract", (network) => {
+  it.each(["twitter", "reddit", "google_business", "vimeo"])("rejects non-canonical or unrepresented network %s at the contract", (network) => {
     expect(SocialNetworkSchema.safeParse(network).success).toBe(false);
   });
 });
@@ -36,8 +37,8 @@ describe("network catalog (no provider routing)", () => {
   });
 
   it("unknown networks have no features", () => {
-    expect(catalog.describe("x")).toBeUndefined();
-    expect(catalog.supports("x", "publish")).toBe(false);
+    expect(catalog.describe("reddit")).toBeUndefined();
+    expect(catalog.supports("reddit", "publish")).toBe(false);
   });
 
   it("another gateway can supply its own catalog without changing the contract", () => {

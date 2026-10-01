@@ -30,6 +30,7 @@ const accountWire = z
     isActive: z.boolean().default(true),
     needsReconnection: z.boolean().optional(),
     enabled: z.boolean().optional(),
+    metadata: z.record(z.string(), z.unknown()).nullish(),
   })
   .loose();
 export const accountListResponse = z.object({ accounts: z.array(accountWire) }).loose();
@@ -66,7 +67,16 @@ export function mapProfile(w: z.infer<typeof profileWire>): ZernioProfile {
   return { id: w._id, name: w.name };
 }
 
+function postLimit(meta: Record<string, unknown> | null | undefined): number | undefined {
+  const n = Number(meta?.maxPostChars ?? meta?.max_post_chars ?? meta?.characterLimit);
+  if (Number.isFinite(n) && n >= 1) return Math.min(Math.floor(n), 25_000);
+  const tier = String(meta?.tier ?? meta?.subscriptionType ?? "").toLowerCase();
+  if (tier.includes("premium") || tier === "verified") return 25_000;
+  return undefined;
+}
+
 export function mapAccount(w: z.infer<typeof accountWire>): ZernioAccount {
+  const maxPostChars = postLimit(w.metadata);
   return {
     externalId: w._id,
     platform: w.platform,
@@ -77,6 +87,7 @@ export function mapAccount(w: z.infer<typeof accountWire>): ZernioAccount {
     // "enabled: false" = created as a side effect, not usable for posting.
     isActive: w.isActive && w.needsReconnection !== true && w.enabled !== false,
     needsReconnection: w.needsReconnection === true,
+    ...(maxPostChars ? { maxPostChars } : {}),
   };
 }
 

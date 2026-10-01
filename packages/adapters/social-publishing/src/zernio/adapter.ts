@@ -1,6 +1,9 @@
 import { createHash } from "node:crypto";
 import { UpstreamError } from "@zeptly-gateway/gateway-contract";
 import type { ZernioClient, ZernioMediaItem, ZernioPostState } from "@zeptly-gateway/zernio-client";
+
+/** X accounts post 280 characters unless the provider reports a higher account ceiling. */
+const X_DEFAULT_MAX_CHARS = 280;
 import { ZERNIO } from "@zeptly-gateway/zernio-client";
 import type { PreparedUpload, PublishRequest, RemoteMedia, RemotePostState, SocialPublishingPort } from "../port.js";
 
@@ -40,11 +43,34 @@ export class ZernioSocialPublishingAdapter implements SocialPublishingPort {
   }
 
   async publish(input: PublishRequest): Promise<RemotePostState> {
+    await this.assertAccountLimits(input);
     return toRemotePost(await this.client.createPost(this.toCreate(input, { publishNow: true })));
   }
 
   async schedule(input: PublishRequest & { scheduledAt: Date }): Promise<RemotePostState> {
+    await this.assertAccountLimits(input);
     return toRemotePost(await this.client.createPost(this.toCreate(input, { scheduledAt: input.scheduledAt })));
+  }
+
+  /**
+   * Account-specific limits are provider mechanics and live here, not in Zeptly. X text is checked against
+   * the account's ceiling (280 unless Zernio reports more) BEFORE any create call; nothing is truncated.
+   */
+  private async assertAccountLimits(input: PublishRequest): Promise<void> {
+    if (input.network !== "x") return;
+    const chars = [...input.text].length;
+    if (chars <= X_DEFAULT_MAX_CHARS) return;
+    const accounts = await this.client.listAccounts();
+    for (const id of input.accountExternalIds) {
+      const max = accounts.find((a) => a.externalId === id)?.maxPostChars ?? X_DEFAULT_MAX_CHARS;
+      if (chars > max) {
+        throw new UpstreamError(ZERNIO, "validation", `X post is ${chars} characters; this account allows ${max}`, {
+          retryable: false,
+          ambiguous: false,
+          details: { providerCode: "X_CHAR_LIMIT_EXCEEDED", chars, max },
+        });
+      }
+    }
   }
 
   async getPost(externalId: string): Promise<RemotePostState> {

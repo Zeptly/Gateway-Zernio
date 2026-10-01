@@ -5,7 +5,7 @@
 - **Gateway Contract v1**: gateway identity, capability discovery, health, workspace-scoped connections and provisioning, canonical errors, webhook and audit envelopes. Every Zeptly provider gateway implements it ([docs/GATEWAY-CONTRACT.md](docs/GATEWAY-CONTRACT.md)).
 - **Capability contracts served** (the minimum that proves portability): `social.publishing@1` and `social.scheduling@1`. Analytics and direct messages are *not* offered, and discovery says so.
 
-> Status: **v0.1.0, validated against a test double only.** No live Zernio call has been made from this repository. See [docs/ZERNIO.md](docs/ZERNIO.md) for what is and is not validated.
+> Status: **v0.1.0 (now including canonical `x`), validated against a test double only.** No live Zernio call has been made from this repository. See [docs/ZERNIO.md](docs/ZERNIO.md) for what is and is not validated.
 
 ## What it is not
 

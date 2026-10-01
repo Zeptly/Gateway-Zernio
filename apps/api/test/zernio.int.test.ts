@@ -78,7 +78,7 @@ describe("workspace → Zernio profile mapping and isolation", () => {
 
   it("rejects non-allow-listed returnUrl origins, unknown channels and credentials on OAuth channels", async () => {
     expect((await h.call(A, "POST", "/v1/connections", { channel: "facebook", returnUrl: "https://evil.example/cb" })).status).toBe(400);
-    expect((await h.call(A, "POST", "/v1/connections", { channel: "x", returnUrl: "https://app.zeptly.test/cb" })).status).toBe(400);
+    expect((await h.call(A, "POST", "/v1/connections", { channel: "reddit", returnUrl: "https://app.zeptly.test/cb" })).status).toBe(400);
     const cred = await h.call(A, "POST", "/v1/connections", { channel: "linkedin", credentials: { handle: "a", appPassword: "b" } });
     expect(cred.status).toBe(400);
     expect(["VALIDATION_ERROR", "CAPABILITY_NOT_SUPPORTED"]).toContain(cred.json.error.code);
@@ -192,6 +192,49 @@ describe("publishing and scheduling on Zernio", () => {
     await h.drain();
     expect(h.fake.posts.size).toBe(0);
     expect((await h.call(A, "GET", `${base}/posts/${created.json.id}`)).json.status).toBe("cancelled");
+  });
+});
+
+describe("canonical x (Zernio calls it twitter)", () => {
+  it("connects X as canonical `x`; the provider name never reaches the API", async () => {
+    const [c] = await h.connect(A, "x");
+    expect(c).toMatchObject({ network: "x", channel: "x", status: "connected" });
+    expect([...h.fake.accounts.values()][0]?.platform).toBe("twitter");
+    expect(h.fake.requests.some((r) => r.path === "/v1/connect/twitter")).toBe(true);
+    const ch = await h.call(A, "GET", "/v1/connections/channels");
+    expect(ch.json.data.map((x: { channel: string }) => x.channel)).toContain("x");
+    expect(JSON.stringify({ ...c, username: undefined, displayName: undefined })).not.toMatch(/twitter/);
+    expect(JSON.stringify((await h.call(A, "GET", `${base}/networks`)).json)).not.toMatch(/twitter/);
+  });
+
+  it("publishes to X using the provider platform name", async () => {
+    const [c] = await h.connect(A, "x");
+    const ok = await draft(A, [c.id], "short post");
+    await h.call(A, "POST", `${base}/posts/${ok.json.id}/publish`, undefined, { "idempotency-key": idem() });
+    await h.drain();
+    const sent = h.fake.requests.find((r) => r.method === "POST" && r.path === "/v1/posts");
+    expect((sent?.body as { platforms: Array<{ platform: string }> }).platforms[0]?.platform).toBe("twitter");
+    expect((await h.call(A, "GET", `${base}/posts/${ok.json.id}`)).json.status).toBe("published");
+
+  });
+
+  it("enforces the per-account ceiling in the gateway: 280 by default, higher when Zernio reports it", async () => {
+    const [c] = await h.connect(A, "x");
+    const acct = [...h.fake.accounts.values()][0]!;
+    const text = "y".repeat(500);
+    const free = await draft(A, [c.id], text);
+    expect(free.status).toBe(201);
+    await h.call(A, "POST", `${base}/posts/${free.json.id}/publish`, undefined, { "idempotency-key": idem() });
+    await h.drain();
+    const after = await h.call(A, "GET", `${base}/posts/${free.json.id}`);
+    expect(after.json.targets[0].status).toBe("failed");
+    expect(h.fake.posts.size).toBe(0);
+
+    acct.metadata = { tier: "Premium" };
+    const premium = await draft(A, [c.id], text + "z");
+    await h.call(A, "POST", `${base}/posts/${premium.json.id}/publish`, undefined, { "idempotency-key": idem() });
+    await h.drain();
+    expect((await h.call(A, "GET", `${base}/posts/${premium.json.id}`)).json.status).toBe("published");
   });
 });
 

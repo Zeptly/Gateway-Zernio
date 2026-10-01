@@ -14,7 +14,7 @@ describe("Gateway Contract v1 surface (Zernio)", () => {
     expect(res.status).toBe(200);
     expect(res.json).toMatchObject({ gateway: "zernio", provider: "zernio", gatewayContractVersion: "1" });
     expect(res.json.capabilities.map((c: { id: string; version: string; enabled: boolean }) => `${c.id}@${c.version}:${c.enabled}`)).toEqual(["social.publishing@1:true", "social.scheduling@1:true"]);
-    expect(res.json.channels.sort()).toEqual(["bluesky", "facebook", "instagram", "linkedin", "pinterest", "threads", "tiktok", "youtube"]);
+    expect(res.json.channels.sort()).toEqual(["bluesky", "facebook", "instagram", "linkedin", "pinterest", "threads", "tiktok", "x", "youtube"]);
     const health = await h.call(null, "GET", "/v1/gateway/health");
     expect(health.json.status).toBe("ok");
     // Health and describe never generate provider traffic.

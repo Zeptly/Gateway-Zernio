@@ -1,5 +1,6 @@
 import type { Logger } from "@zeptly-gateway/observability";
 import { ZERNIO, ZernioError } from "./errors.js";
+import { platformFor } from "./vocabulary.js";
 import { ZernioHttp } from "./http.js";
 import type { ZernioAccount, ZernioCreatePostInput, ZernioPostState, ZernioProfile } from "./types.js";
 import { ZernioWebhookVerifier } from "./webhooks.js";
@@ -74,8 +75,9 @@ export class ZernioClient {
   /* ---------------------------- accounts ---------------------------- */
 
   async getConnectUrl(input: { platform: string; profileId: string; redirectUrl: string }): Promise<{ authorizationUrl: string }> {
-    assertSlug(input.platform);
-    const json = await this.http.request(`/v1/connect/${input.platform}`, { query: { profileId: input.profileId, redirect_url: input.redirectUrl } });
+    const platform = platformFor(input.platform);
+    assertSlug(platform);
+    const json = await this.http.request(`/v1/connect/${platform}`, { query: { profileId: input.profileId, redirect_url: input.redirectUrl } });
     return { authorizationUrl: parseOrProtocolError(connectUrlResponse, json, "GET /v1/connect/{platform}").authUrl };
   }
 
@@ -113,7 +115,7 @@ export class ZernioClient {
       ...(input.media.length
         ? { mediaItems: input.media.map((m) => ({ type: m.type, url: m.url, ...(m.filename ? { filename: m.filename } : {}), ...(m.mimeType ? { mimeType: m.mimeType } : {}), ...(m.size ? { size: m.size } : {}) })) }
         : {}),
-      platforms: input.targets.map((t) => ({ platform: t.platform, accountId: t.accountExternalId, ...(t.platformOptions ? { platformSpecificData: t.platformOptions } : {}) })),
+      platforms: input.targets.map((t) => ({ platform: platformFor(t.platform), accountId: t.accountExternalId, ...(t.platformOptions ? { platformSpecificData: t.platformOptions } : {}) })),
       ...(input.scheduledAt ? { scheduledFor: input.scheduledAt.toISOString(), timezone: "UTC" } : {}),
       ...(input.publishNow ? { publishNow: true } : {}),
       ...(input.metadata ? { metadata: input.metadata } : {}),

@@ -23,6 +23,7 @@ export interface FakeZAccount {
   displayName: string;
   isActive: boolean;
   needsReconnection?: boolean;
+  metadata?: Record<string, unknown>;
 }
 export interface FakeZProfile {
   _id: string;
@@ -84,6 +85,7 @@ export class FakeZernio {
       displayName: a.displayName ?? `${a.platform} account ${this.seq}`,
       isActive: a.isActive ?? true,
       ...(a.needsReconnection ? { needsReconnection: true } : {}),
+      ...(a.metadata ? { metadata: a.metadata } : {}),
     };
     this.accounts.set(acct._id, acct);
     return acct;

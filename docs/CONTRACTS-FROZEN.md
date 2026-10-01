@@ -20,6 +20,10 @@ jq -S '."gateway-contract@1", ."social.publishing@1+social.scheduling@1"' packag
 
 Not frozen across gateways: `social.analytics.basic@1` and `social.direct_messages@1` (not offered by this gateway).
 
+## Canonical channels are provider-neutral
+
+`x` was added to the shared channel list before the final v1 freeze (no immutable v1 tag existed; pre-v1 portability correction). This gateway serves `x` and maps it to Zernio's `twitter` **inside `zernio-client`** (`vocabulary.ts`); the provider name never appears in the API, OpenAPI or database. Gateway-Outstand does not serve `x`.
+
 ## OpenAPI version and hash
 
 `info.version` is the deployed API version, `info.x-gateway-contract-version` the Gateway Contract version, `info.x-capability-contracts` the served `id@version` list, and `openapi/openapi.sha256` the SHA-256 of `openapi/openapi.json`. `pnpm openapi:check` fails when either is stale.

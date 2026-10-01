@@ -7,7 +7,8 @@ Provider authority: <https://docs.zernio.com/> (OpenAPI 3.1, API version **1.181
 | Gateway concept | Zernio |
 | --- | --- |
 | Workspace | One **profile**, named `ZERNIO_PROFILE_PREFIX + <opaque tenant ref>` (`POST /v1/profiles`, names unique per team; duplicate → 409 `details.existingProfileId`). Zeptly's workspace id is never sent |
-| Channel | Platform slug (`linkedin`, `instagram`, `facebook`, `threads`, `tiktok`, `pinterest`, `youtube`, `bluesky`) |
+| Channel | Platform slug (`linkedin`, `instagram`, `facebook`, `threads`, `tiktok`, `pinterest`, `youtube`, `bluesky`) plus canonical `x`, which Zernio calls `twitter` (mapped only in `zernio-client/src/vocabulary.ts`) |
+| X account limits | 280 characters unless the account reports a higher ceiling (X Premium: up to 25,000); checked in the adapter before any create call and never truncated. The metadata field names read for the ceiling (`maxPostChars`, `max_post_chars`, `tier`) are **unverified** against live data |
 | Connection / provider account | A Zernio **account** (`GET /v1/accounts?profileId=`), `_id` stored only in `provider_accounts.external_id` |
 | OAuth provisioning | `GET /v1/connect/{platform}?profileId&redirect_url` → `authUrl`; after consent Zernio creates the account and redirects to `redirect_url?connected&profileId&accountId&username` (see [SECURITY.md](SECURITY.md)) |
 | Bluesky | `POST /v1/connect/bluesky/credentials` (`identifier`, `appPassword`, `state = {userId}-{profileId}`, `userId` from `GET /v1/users`) |

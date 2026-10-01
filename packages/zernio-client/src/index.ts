@@ -11,3 +11,4 @@ export type {
   ZernioWebhookEvent,
 } from "./types.js";
 export { SIGNATURE_HEADER, ZernioWebhookVerifier, computeSignature, verifySignature } from "./webhooks.js";
+export { channelFor, platformFor } from "./vocabulary.js";

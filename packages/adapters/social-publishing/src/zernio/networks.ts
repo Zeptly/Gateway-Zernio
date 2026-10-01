@@ -186,4 +186,26 @@ export const ZERNIO_SOCIAL_NETWORKS: Readonly<Record<SocialNetwork, NetworkDescr
       "credentials: Zeptly may submit handle + app password; forwarded once to the provider and never persisted.",
     ],
   },
+  x: {
+    network: "x",
+    displayName: "X",
+    capabilities: { ...BASE },
+    constraints: {
+      // Platform ceiling (X Premium long posts). The per-ACCOUNT ceiling (280 unless the account reports
+      // a higher one) is enforced by ZernioSocialPublishingAdapter before any provider call.
+      maxTextLength: 25_000,
+      textRequired: true,
+      mediaRequired: false,
+      maxMediaItems: 4,
+      allowMixedMedia: false,
+      image: { maxItems: 4, mimeTypes: ["image/jpeg", "image/png", "image/gif", "image/webp"], maxSizeBytes: 5_242_880 },
+      video: { maxItems: 1, mimeTypes: ["video/mp4"], maxSizeBytes: 536_870_912 },
+      options: [],
+    },
+    notes: [
+      "Canonical channel `x`.",
+      "Accounts post up to 280 characters unless Zernio reports a higher ceiling for the account (X Premium: up to 25,000). Over-limit posts are refused with a provider-rejected error and are never truncated.",
+      "Constraints are provisional until verified against live Zernio data (docs/ZERNIO.md, open items).",
+    ],
+  },
 };
