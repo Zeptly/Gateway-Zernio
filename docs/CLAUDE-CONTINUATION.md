@@ -247,3 +247,6 @@ A met (tests in both gateways). B met (architecture tests; one sanctioned doc ex
 
 ### Update — canonical `x` and MVP routing checkpoint
 Canonical `x` is in the shared social contract (hashes/OpenAPI/vectors regenerated). MVP routes by gateway-qualified connection (zeptly-mvp `claude/funny-allen-b47ffl` @ 2533751a). Docker CI job and everything deployed/live remain unexecuted (PENDING_INFRASTRUCTURE). Human-gated next steps: deploy (Outstand redeploy after contract change; Zernio first deploy with env-only secrets), then the live draft-approve/X slice.
+
+## Checkpoint — adapter isolation guard (criteria A, B)
+Added `packages/gateway-core/test/adapter-isolation.test.ts`: no provider-neutral package imports provider code (A), and shared contracts name no provider outside comments (B). It found one leak: the gateway-id description example in the shared gateway contract named a provider; it now reads `acme-social`. Contract lock + OpenAPI + hash regenerated in both gateways (shared lock entries identical; Zernio intentionally omits `social.analytics.basic@1`). Evidence is local unit/typecheck/lint only; removing the adapter was exercised in a scratch copy (contract/core suites pass; only the adapter's own tests fail, as expected).
