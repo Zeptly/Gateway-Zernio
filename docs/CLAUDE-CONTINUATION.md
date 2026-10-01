@@ -1,6 +1,15 @@
 # Gateway-Zernio — handoff (2026-10-01)
 
-**STATUS: proposed release candidate RC1 = `4254506` reviewed clean; Worker aligned to it; API pin still to be aligned; NOT YET RELEASE-FROZEN.**
+**GATEWAY-ZERNIO RC1 ACCEPTED FOR ZEPTLY STAGING**
+
+| | |
+| --- | --- |
+| Accepted RC1 SHA | `4254506689ad2a0bfd27ebbac97d138bad47e220` |
+| Gateway Contract hash (`gateway-contract@1`) | `3134ad65217cfb42266d8ac920616659e5d21bae2760485b209e79c3c10fdc4c` |
+| OpenAPI hash (`openapi/openapi.sha256`) | `74273a936d40f2e10ce596d180de97d458b06a0817dcd773f23cd3edbf85a880` |
+| Accepted on | 2026-10-01, after all seven live revalidation checks passed (Section 6B) with API and Worker both pinned to and running the exact SHA |
+
+**Not yet done:** no final release tag (deliberately withheld); `main` does not yet contain RC1 (Section 13); secret rotation, the Zernio-side registration record and the sibling-repo steps remain open.
 
 No secret values are recorded here, only variable names.
 
@@ -11,21 +20,24 @@ Evidence labels used below:
 - **CI-OBSERVED**: read from GitHub Actions results for an exact SHA.
 - **NOT ESTABLISHED**: could not be confirmed; deliberately not guessed or reconstructed.
 
-## 0. Remaining actions that gate Zeptly staging integration
+## 0. Status and remaining actions
 
-1. **Align the API's configured source pin to `4254506`** (currently still `0c88006` while the serving deployment's metadata says `4254506`). One step, owner go-ahead pending: `connect-service-source` on the API with repo `Zeptly/Gateway-Zernio`, branch `claude/funny-allen-b47ffl`, `commitSha 4254506689ad2a0bfd27ebbac97d138bad47e220`. It triggers a rebuild/restart of the API from the pinned SHA (same code; no migrations differ), after which API and Worker both show `4254506` in config **and** deployment metadata.
-2. **Live revalidation of RC1** (Section 6B): signed `GET /v1/gateway` returning the RC1 contract hash, live bad-signature 401, one fresh Zernio `webhook.test` → API 200 + Worker `process_webhook` success. These need a service secret or the Zernio dashboard and cannot be done by the writing session.
-3. Owner sign-off of RC1 as the release, then the canonical-main plan (Section 13). Do not create a release tag until 1–3 are done.
+Resolved on 2026-10-01: API pin aligned to RC1 (deployment `589b77ca…` SUCCESS), API and Worker both pinned to and running the exact full SHA, and the seven live revalidation checks passed. The earlier API/Worker drift is closed.
 
-> Do not present the gateway as fully release-frozen until items 1 and 2 are recorded here. Never "deploy latest": keep both services pinned to an exact SHA.
+Remaining, in order:
+1. **Canonical-main transition (Section 13)**: land RC1 on `main` preserving SHAs (no squash, no rebase), then reduce PR #1 to its true docs-only diff. Prepared, not executed. **PR #1 must not be merged in its present form.**
+2. **Final release tag**: not created; only after step 1.
+3. **Secrets (Section 10)**: rotate `ZEPTLY_SERVICE_SECRET` (and `ZERNIO_WEBHOOK_SECRET` if ever exposed) before Zeptly staging uses them.
+4. Record the Zernio-side webhook registration (URL, subscribed events, id): NOT ESTABLISHED.
+5. Zeptly staging integration in a fresh session (Section 12). Keep both services pinned to an exact SHA; never "deploy latest".
 
 ## 1. Source / documentation state (repository lineage)
 
 | Ref | Meaning |
 | --- | --- |
 | `main` (`594af31`) | "Initial commit" (README only). Not yet a canonical release line. |
-| `0c88006216eb3c82fb52a18520ec495b4fe7ab54` | Previously accepted/owner-verified line. Superseded as the proposed release by RC1. Remains reachable from `claude/funny-allen-b47ffl`. |
-| **`4254506689ad2a0bfd27ebbac97d138bad47e220`** | **RC1.** Head of `claude/funny-allen-b47ffl`; linear descendant of `0c88006`. |
+| `0c88006216eb3c82fb52a18520ec495b4fe7ab54` | Earlier owner-verified line. Superseded by RC1; remains reachable from RC1. |
+| **`4254506689ad2a0bfd27ebbac97d138bad47e220`** | **RC1 — ACCEPTED.** Head of `claude/funny-allen-b47ffl`; linear descendant of `0c88006`; `main` is its ancestor, so `main` can fast-forward to it. |
 | `origin/docs/zeptly-secret-setup` (`dba40af`) | `0c88006` + README only (sibling of RC1, not a descendant). |
 | `claude/dreamy-lovelace-yv6otk` (this handoff branch) | `dba40af` + this documentation. Code is byte-identical to `0c88006`; it does **not** contain RC1's changes. Railway does not track it. PR #1 from this branch must not be merged in its current form (Section 13). |
 
@@ -35,15 +47,15 @@ The repository lineage says nothing about what is running. Section 2 is the runt
 
 | Service | Configured source pin (RAILWAY-OBSERVED) | Latest deployment metadata (RAILWAY-OBSERVED) | State |
 | --- | --- | --- | --- |
-| **Worker** | `Zeptly/Gateway-Zernio`, branch `claude/funny-allen-b47ffl`, `commitSha` **`4254506689ad2a0bfd27ebbac97d138bad47e220`** (re-pinned 2026-10-01 ~11:46Z on owner instruction after the RC1 review) | Deployment `fb21c9dd-57f6-4b0e-85c9-b5e65624c508`, 11:46:30Z, SUCCESS, commit `4254506…` | Config and deployment both `4254506`. Aligned. |
-| **API** | `Zeptly/Gateway-Zernio`, branch `claude/funny-allen-b47ffl`, `commitSha` **`0c88006…`** (unchanged) | Deployment `339a7e3e-0431-4c3c-9536-14091c65f04f`, 11:25:40Z, SUCCESS, commit **`4254506…`** | **DEPLOYMENT DRIFT — REQUIRES RECONCILIATION** (narrowed): serving deployment metadata is RC1 but the configured pin is `0c88006`, so a rebuild from config would silently revert the API. Section 0 item 1. |
+| **Worker** | `Zeptly/Gateway-Zernio`, branch `claude/funny-allen-b47ffl`, `commitSha` **`4254506689ad2a0bfd27ebbac97d138bad47e220`** (re-pinned ~11:46Z on owner instruction after the RC1 review) | Deployment `fb21c9dd-57f6-4b0e-85c9-b5e65624c508`, 11:46:30Z, SUCCESS, commit `4254506689ad2a0bfd27ebbac97d138bad47e220` | Config and deployment both RC1. Aligned. |
+| **API** | `Zeptly/Gateway-Zernio`, branch `claude/funny-allen-b47ffl`, `commitSha` **`4254506689ad2a0bfd27ebbac97d138bad47e220`** (re-pinned 11:53Z on owner approval) | Deployment `589b77ca-6518-486e-b180-2c46b8afb4fb`, 11:53:29Z, SUCCESS, commit `4254506689ad2a0bfd27ebbac97d138bad47e220` | Config and deployment both RC1. Aligned. The earlier drift (pin `0c88006` vs serving `4254506`) is **closed**. |
 | Postgres | n/a | `ghcr.io/railwayapp-templates/postgres-ssl:18`, SUCCESS | Running; volume `postgres-volume`. |
 
 Deployment history (RAILWAY-OBSERVED):
-- API: `05d6a345…` @ `4254506` (10:34Z, REMOVED) → `32c36f3e…` @ `0c88006` (10:36Z, REMOVED 11:26Z) → **`339a7e3e…` @ `4254506` (11:25Z, SUCCESS, serving)**.
+- API: `05d6a345…` @ `4254506` (10:34Z, REMOVED) → `32c36f3e…` @ `0c88006` (10:36Z, REMOVED 11:26Z) → `339a7e3e…` @ `4254506` (11:25Z, superseded) → **`589b77ca…` @ `4254506` (11:53Z, SUCCESS, serving, pinned)**.
 - Worker: `994dd588…` @ `4254506` (10:34Z, REMOVED) → `03384713…` @ `0c88006` (10:36Z, REMOVED 11:46Z) → **`fb21c9dd…` @ `4254506` (11:46Z, SUCCESS, serving)**.
 
-The serving API build is identified only through Railway's deployment metadata; the public API is not reachable from the writing session's sandbox (proxy 403) and no endpoint exposes the build SHA. A signed `GET /v1/gateway` compared with the RC1 hashes below positively identifies it (Section 6B).
+The serving build is identified through Railway's config and deployment metadata for both services; the live checks in Section 6B were run by the owner against the pinned deployment. The descriptor endpoint does not expose a build SHA or contract hash, so the hashes are tied to the SHA by the repository and CI, not by a live call.
 
 ### RC1 review (4254506 vs 0c88006) — result: CLEAN, no blocking findings
 Scope of the change (6 files, all reviewed in full):
@@ -74,7 +86,7 @@ Caveats: the guard test is heuristic (regex over source) and enforces provider-n
 - Capabilities served, exactly two: `social.publishing` version **1**, `social.scheduling` version **1**.
 - Canonical `x` is supported (Zernio's `twitter`, mapped only inside `zernio-client/src/vocabulary.ts`). Canonical channels: linkedin, instagram, facebook, threads, tiktok, pinterest, youtube, bluesky, x.
 - Routes: `GET /health`, `GET /ready`, `GET /v1/gateway`, `GET /v1/gateway/health`, `GET /v1/capabilities`, `/v1/connections*`, `/v1/social/publishing/*`, `POST /v1/webhooks/zernio`, `/v1/admin/*` (jobs, webhook-events). Authentication: ZS1-HMAC-SHA256 service signatures (docs/SECURITY.md).
-- This inventory is repository-derived (identical in `0c88006` and RC1; only the hashes in Section 2 differ). It is **not confirmed that the live API serves exactly RC1's hashes**; the signed check in Section 6B settles that.
+- This inventory is repository-derived (identical in `0c88006` and RC1; only the hashes in Section 2 differ). Live checks 3 and 4 (Section 6B) confirmed gateway `zernio`, Gateway Contract version 1 and both capabilities at version 1 on the RC1 deployment.
 
 ## 4. API endpoint
 
@@ -108,22 +120,23 @@ These are corroborating observations only; they do not substitute for Section 5 
 - Health: `GET /health` 200 at 11:26:06Z; `GET /ready` 200 at 10:38, 10:40 and 11:22Z; signed `GET /v1/gateway`, `/v1/gateway/health`, `/v1/capabilities` 200 at 10:38Z. Railway reports the latest deployment of all three services `SUCCESS`.
 - The logs cannot show whether a given request was a real Zernio delivery or a signed manual test.
 
-## 6B. RC1 minimal revalidation (status)
+## 6B. RC1 revalidation (all seven live checks PASSED)
 
-| Check | Status |
-| --- | --- |
-| RC1 diff reviewed (Section 2) | **Done — clean.** |
-| CI on exact `4254506` (lint/typecheck/tests/build/openapi/zs1/db checks + docker) | **Done — CI-OBSERVED success** (run 36831050529). |
-| Worker re-pinned and redeployed on RC1 | **Done — RAILWAY-OBSERVED:** deployment `fb21c9dd` SUCCESS; startup log shows pre-deploy `[migrate]` completed with no migrations to apply, then `worker started`. |
-| Railway status, all services | **Done:** API, Worker, Postgres latest deployments SUCCESS; no pending/staged changes. |
-| Worker job processing after the redeploy | **Pending in logs:** only startup lines were visible at the time of writing (log delivery is batched); re-check that `housekeeping`/`reconcile_*` show `outcome: success` and `process_webhook` still succeeds. |
-| API configured pin == serving build | **Open** (Section 0 item 1). |
-| Live `GET /v1/gateway` via signed request returns RC1 (compare OpenAPI `description` of `gateway` = `e.g. "acme-social"`, `openapi.sha256` = `74273a93…`) | **NOT DONE** — needs the service secret; the writing session has none and cannot reach the API. |
-| Live bad-signature `POST /v1/webhooks/zernio` → 401 | **NOT DONE** (same reason). |
-| Fresh Zernio `webhook.test` → API 200 + Worker `process_webhook` success | **NOT DONE** — needs the owner to press "test" in Zernio; the writing session can then read the logs to confirm. |
-| `GET /health`, `GET /ready` from outside | **NOT DONE** from the sandbox (Railway healthcheck on `/health` passed for the API deployment). |
+Results reported by the owner (USER-SUPPLIED) and corroborated by RAILWAY-OBSERVED logs of API deployment `589b77ca` and Worker deployment `fb21c9dd`. The live Zernio `profiles` check was deliberately not rerun (the Zernio client did not change in RC1).
 
-Human commands (secrets via env only, never echoed): `ZS_BASE_URL=https://api-production-c873b.up.railway.app pnpm zs GET /v1/gateway --no-workspace`, then send one `webhook.test` from the Zernio dashboard.
+| # | Check | Result | Railway log corroboration |
+| --- | --- | --- | --- |
+| 1 | Health | **PASS** — HTTP 200 `{"status":"ok"}` | `GET /health` 200, 11:58:59Z |
+| 2 | Readiness | **PASS** — HTTP 200; database, migrations (2 applied) and configuration checks ok | `GET /ready` 200, 11:59:19Z |
+| 3 | Signed `GET /v1/gateway` | **PASS** — 200; gateway `zernio`, Gateway Contract version 1 | `GET /v1/gateway` 200, 11:59:39Z |
+| 4 | Signed capability discovery (workspace `ws_rc1_validation`) | **PASS** — `social.publishing` 1 and `social.scheduling` 1 (both currently unavailable: no connected account, as expected) | `GET /v1/capabilities` 200, 11:59:58Z |
+| 5 | Invalid signed request | **PASS** — HTTP 401, `AUTHENTICATION_FAILED`, reason `signature mismatch` | `GET /v1/gateway` rejected `AUTHENTICATION_FAILED` → 401, 12:00:18Z |
+| 6 | Real Zernio `webhook.test` | **PASS** — owner reports complete | `POST /v1/webhooks/zernio` → 200, 12:00:56Z (reqId `992727a8…`) |
+| 7 | Worker `process_webhook` | **PASS** | Worker job `fc08cccd-de9d-4dce-ba1e-cb61847d68e4`, `process_webhook`, attempt 1, `outcome: success`, 10 ms, 12:00:57Z (about 1 s after the API 200). Admin `GET /v1/admin/webhook-events?limit=5` → 200 with four `webhook.test` events, all `processed`, one attempt each |
+
+Also observed after the redeploy: Worker `reconcile_publications` succeeded at 11:50, 11:55 and 12:00Z; both services' pre-deploy migration steps were no-ops.
+
+Side effect recorded: check 4 lazily registered one inert workspace row (`ws_rc1_validation`, opaque provider tenant ref) in the gateway database; no Zernio call was made.
 
 ## 7. Prior-session transcript scan (programme session `session_017Dx1BBy8GRisVy7Qy583Zd`)
 
@@ -133,11 +146,11 @@ The scan covered ~2026-10-01T07:05Z–11:34Z of that session; it contains no Rai
 | --- | --- |
 | Secret exposure (`ZEPTLY_SERVICE_SECRET`, `ZERNIO_WEBHOOK_SECRET`, `ZERNIO_API_KEY`) | **NOT ESTABLISHED** |
 | Zernio-side webhook registration state (registered URL, subscribed event types, webhook id) | **NOT ESTABLISHED** |
-| Leftover `webhook.test` rows in the gateway database | **NOT ESTABLISHED** |
+| Leftover `webhook.test` rows in the gateway database (from the transcript scan) | **NOT ESTABLISHED** by the scan; see the update below |
 
-Nothing here is guessed or reconstructed. For reference only (not evidence of the live registration): the gateway's code and docs/RUNBOOK.md expect an endpoint at `<PUBLIC_BASE_URL>/v1/webhooks/zernio` subscribed to `post.platform.published`, `post.platform.failed`, `account.disconnected`, and the handler also accepts `webhook.test`. **Human action:** read the actual registration from the Zernio dashboard/API and record the URL and event list here.
+Nothing here is guessed or reconstructed. (The leftover-rows status changed after RC1 revalidation; see the update below.) For reference only (not evidence of the live registration): the gateway's code and docs/RUNBOOK.md expect an endpoint at `<PUBLIC_BASE_URL>/v1/webhooks/zernio` subscribed to `post.platform.published`, `post.platform.failed`, `account.disconnected`, and the handler also accepts `webhook.test`. **Human action:** read the actual registration from the Zernio dashboard/API and record the URL and event list here.
 
-Database: the writing session had no database access. Row counts for `webhook.test` (or any other table) are therefore not recorded; the admin endpoint `GET /v1/admin/webhook-events?limit=50` (signed) is the way to list them. If rows exist, `webhook.test` events are acknowledged and ignored by the handler; whether to delete them is a human decision (list ids first; no bulk delete). Cleanup requirement: **NOT ESTABLISHED**.
+Database: the writing session had no database access. Row counts for `webhook.test` (or any other table) are therefore not recorded; the admin endpoint `GET /v1/admin/webhook-events?limit=50` (signed) is the way to list them. If rows exist, `webhook.test` events are acknowledged and ignored by the handler; whether to delete them is a human decision (list ids first; no bulk delete). **Update from RC1 revalidation (USER-SUPPLIED via the admin endpoint, consistent with the Railway logs):** the gateway database holds **four** `webhook.test` events, all `processed` with one attempt each. By time they correspond to the 10:39Z signed test, the real deliveries at 11:26:18Z and 11:26:38Z (the 11:26:52Z request produced no job and is presumed deduplicated), and the 12:00:56Z RC1 test. Cleanup is **not required** (the handler acknowledges and ignores `webhook.test`); optional hygiene only, by explicit owner decision after listing ids. Other tables (connections, posts, publications) were not inspected.
 
 ## 8. Not yet tested live
 
@@ -164,38 +177,36 @@ Secret-bearing: `ZEPTLY_SERVICE_SECRET`, `ZERNIO_WEBHOOK_SECRET`, `ZERNIO_API_KE
 
 ## 11. Remaining human actions (in order)
 
-1. Approve the API pin alignment to RC1 (Section 0 item 1) — or run it yourself — and confirm both services show `4254506` in config and deployment metadata.
-2. Run the live revalidation in Section 6B and record the results.
-3. Sign off RC1, then execute the canonical-main plan (Section 13).
+1. Execute the canonical-main transition (Section 13), starting with the fast-forward of `main` to RC1.
+2. Create the final release tag only after step 1 (deliberately not created).
+3. Rotate `ZEPTLY_SERVICE_SECRET` (and `ZERNIO_WEBHOOK_SECRET` if ever exposed) per Section 10 before Zeptly staging uses the service secret.
 4. Record the Zernio-side webhook registration (URL, events, id) from Zernio.
-5. Rotate `ZEPTLY_SERVICE_SECRET` / `ZERNIO_WEBHOOK_SECRET` per Section 10 (rotating after RC1 is settled avoids stacking an unexplained change).
-6. Record actual `webhook.test` row count; decide on cleanup.
-7. No release tag until 1–3 are done. Keep both services pinned to an exact SHA.
-8. Supply the Zeptly staging inputs below.
+5. Decide whether to remove the four inert `webhook.test` rows and the `ws_rc1_validation` workspace row (optional).
+6. Supply the Zeptly staging inputs in Section 12.
 
 ## 12. Next phase: Zeptly staging integration
 
-Run it in a **fresh session with all three repositories available** (Zeptly/zeptly-MVP, Zeptly/Gateway-Outstand, Zeptly/Gateway-Zernio), and only after Section 0 items 1–3 are resolved. Zeptly MVP was not touched by this handoff; no Gateway-Zernio features are to be added in this phase.
+Run it in a **fresh session with all three repositories available** (Zeptly/zeptly-MVP, Zeptly/Gateway-Outstand, Zeptly/Gateway-Zernio). RC1 is accepted, so it can start once the secret and main-branch items it depends on (Section 0 items 1 and 3) are settled. Zeptly MVP was not touched by this handoff; no Gateway-Zernio features are to be added in this phase.
 
 Exact inputs the staging session needs:
 
 - Gateway base URL `https://api-production-c873b.up.railway.app`; gateway id `zernio`; Gateway Contract `1`; capabilities `social.publishing@1`, `social.scheduling@1`.
-- The release SHA demonstrably deployed on **both** services (RC1 `4254506` once Section 0 is done) and its `contracts.lock.json` / `openapi.sha256` values (the Section 2 RC1 column).
+- The accepted RC1 SHA `4254506689ad2a0bfd27ebbac97d138bad47e220`, pinned on both services, with `gateway-contract@1` hash `3134ad65…` and OpenAPI hash `74273a93…` (full values at the top of this file).
 - Zeptly staging environment name / `ZEPTLY_ENVIRONMENT` value and the staging Supabase project ref (never production `ikynpepqqxbmipesxjqh`).
 - The gateway service secret delivered out-of-band into Zeptly staging config as `ZEPTLY_GATEWAY_*_SECRET` (exact suffix per `docs/provider-gateways/ROLLOUT.md` in zeptly-MVP), after any rotation; never in chat or git.
 - A dedicated test social account and workspace id for the first live connect/publish/schedule validation, and explicit authorisation before any live publish.
 - Confirmation that Gateway-Outstand production must not be mutated without explicit approval.
 - The Zeptly staging origin to include in `ALLOWED_RETURN_URL_ORIGINS` (current Railway value is not recorded here).
 
-## 13. Canonical-main plan (prepared, NOT executed; PR #1 must not be merged as it stands)
+## 13. Canonical-main transition (prepared; `main` NOT yet changed; PR #1 must not be merged as it stands)
 
 Why PR #1 is misleading: `main` is a single README-only "Initial commit", so any PR into it shows the whole repository as new and a "docs" title hides that. Also `claude/dreamy-lovelace-yv6otk` descends from `0c88006`, not RC1, so merging it would put the pre-RC1 contract on `main` and make the Railway-pinned RC1 SHA unreachable from `main`.
 
 Target end state: `main` contains RC1 `4254506` **with its SHA intact** (so Railway pins stay valid) plus the README secret-setup note and this handoff, with Railway still pinned to an exact SHA (never following `main`).
 
-1. **Owner sign-off on RC1** after Section 0 items 1–2 (gate).
-2. **Land RC1 on `main` preserving SHAs**: preferably a fast-forward (`main` is an ancestor of `claude/funny-allen-b47ffl`: `git push origin 4254506:refs/heads/main`), or a PR from `claude/funny-allen-b47ffl` titled "Gateway-Zernio v0.1.0 RC1 (4254506): Gateway Contract v1 + social.publishing/scheduling@1" merged with a **merge commit**. **Never squash or rebase-merge**: that rewrites `0c88006`/`4254506` and orphans the deployed pin. Check branch protection first.
-3. **Rebuild PR #1 as a small docs PR**: merge (do not rebase or force-push) new `main` into `claude/dreamy-lovelace-yv6otk`, resolving the single expected conflict in `docs/CLAUDE-CONTINUATION.md` by keeping this handoff plus RC1's checkpoint paragraph; `dba40af` (README-only) rides along. Retitle PR #1 "docs: handoff + local secret-setup README", rewrite its description, retarget if needed. Its diff against the new `main` should then be exactly `README.md` and `docs/CLAUDE-CONTINUATION.md`. Verify with `git diff origin/main...HEAD --stat` before un-drafting.
+1. **RC1 accepted** (gate satisfied, see the top of this file).
+2. **Land RC1 on `main` preserving SHAs** (OWNER ACTION, not yet done): preferably a fast-forward (`main` is an ancestor of `claude/funny-allen-b47ffl`: `git push origin 4254506:refs/heads/main`), or a PR from `claude/funny-allen-b47ffl` titled "Gateway-Zernio v0.1.0 RC1 (4254506): Gateway Contract v1 + social.publishing/scheduling@1" merged with a **merge commit**. **Never squash or rebase-merge**: that rewrites `0c88006`/`4254506` and orphans the deployed pin. Check branch protection first.
+3. **Rebuild PR #1 as a small docs PR** — PREPARED: RC1 (`4254506`) has been merged (merge commit; no rebase, no force-push) into `claude/dreamy-lovelace-yv6otk`, resolving the single conflict in `docs/CLAUDE-CONTINUATION.md` by keeping this handoff plus RC1's checkpoint paragraph. Once `main` fast-forwards to `4254506`, this branch's diff against `main` is exactly `README.md` + `docs/CLAUDE-CONTINUATION.md`; `dba40af` (README-only) rides along. Retitle PR #1 "docs: handoff + local secret-setup README", rewrite its description, retarget if needed. Its diff against the new `main` should then be exactly `README.md` and `docs/CLAUDE-CONTINUATION.md`. Verify with `git diff origin/main...HEAD --stat` before un-drafting.
 4. **Railway** (separate, deliberate step): once `main` contains RC1, optionally switch both services' source branch from `claude/funny-allen-b47ffl` to `main` **with the same `commitSha`** (`connect-service-source`), which rebuilds identical code; never remove the SHA pin. Docs-only commits to `main` must not redeploy anything.
 5. **Tag**: only after 1–4, tag the RC1 commit `gateway-zernio-v0.1.0-rc1` (annotated). Not before.
 6. **Branch hygiene**: after step 4, `claude/funny-allen-b47ffl` and `docs/zeptly-secret-setup` may be deleted (both fully contained in `main`/PR #1); keep them until Railway no longer references the old branch.
