@@ -75,6 +75,11 @@ export interface SocialPublishingPort {
   getPost(externalId: string): Promise<RemotePostState>;
   /** Idempotent: an already-deleted post resolves successfully. */
   deletePost(externalId: string): Promise<void>;
+  /**
+   * Remove an already PUBLISHED post from the network (the provider-side copy of one target). Idempotent: a post that
+   * is already gone resolves successfully. Throws `UpstreamError` ("unsupported") where the provider cannot do it.
+   */
+  unpublishPost(input: { externalId: string; network: SocialNetwork; accountExternalId: string }): Promise<void>;
   updatePost?(externalId: string, input: UpdateRequest): Promise<RemotePostState>;
 }
 

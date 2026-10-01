@@ -5,6 +5,7 @@ import type { ZernioClient, ZernioMediaItem, ZernioPostState } from "@zeptly-gat
 /** X accounts post 280 characters unless the provider reports a higher account ceiling. */
 const X_DEFAULT_MAX_CHARS = 280;
 import { ZERNIO } from "@zeptly-gateway/zernio-client";
+import type { SocialNetwork } from "../contract/networks.js";
 import type { PreparedUpload, PublishRequest, RemoteMedia, RemotePostState, SocialPublishingPort } from "../port.js";
 
 /**
@@ -79,6 +80,10 @@ export class ZernioSocialPublishingAdapter implements SocialPublishingPort {
 
   deletePost(externalId: string): Promise<void> {
     return this.client.deletePost(externalId);
+  }
+
+  unpublishPost(input: { externalId: string; network: SocialNetwork; accountExternalId: string }): Promise<void> {
+    return this.client.unpublishPost({ externalId: input.externalId, channel: input.network, accountExternalId: input.accountExternalId });
   }
 
   private toCreate(input: PublishRequest, mode: { publishNow: true } | { scheduledAt: Date }) {

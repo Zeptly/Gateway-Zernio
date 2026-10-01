@@ -63,7 +63,7 @@ export interface ConnectionResult {
 }
 
 /** POST /v1/connections — initiate provisioning for a channel (network). */
-export async function createConnection(ctx: ConnectionsContext, actor: Actor, req: CreateConnectionInput, reconnect?: GatewayConnectionRow): Promise<ConnectionResult> {
+export async function createConnection(ctx: ConnectionsContext, actor: Actor, req: CreateConnectionInput, reconnect?: GatewayConnectionRow, reconnectAccountExternalId?: string): Promise<ConnectionResult> {
   const network = req.channel;
   const descriptor = ctx.channels.get(network);
   if (!descriptor) throw new GatewayError("NETWORK_NOT_SUPPORTED", "Channel is not supported by this gateway", { details: { channel: network } });
@@ -108,7 +108,7 @@ export async function createConnection(ctx: ConnectionsContext, actor: Actor, re
   const redirectUri = `${ctx.settings.publicBaseUrl.replace(/\/+$/, "")}/v1/connect/callback/${state}`;
   let authorizationUrl: string;
   try {
-    ({ authorizationUrl } = await provider.initiateConnection({ channel: network, redirectUri, tenantRef: ws.providerTenantRef }));
+    ({ authorizationUrl } = await provider.initiateConnection({ channel: network, redirectUri, tenantRef: ws.providerTenantRef, ...(reconnectAccountExternalId ? { reconnectAccountExternalId } : {}) }));
   } catch (err) {
     throw toGatewayError(err);
   }
@@ -387,12 +387,14 @@ export async function getConnection(ctx: ConnectionsContext, actor: Actor, id: s
 
 export async function reconnectConnection(ctx: ConnectionsContext, actor: Actor, id: string, req: Omit<CreateConnectionInput, "channel">): Promise<ConnectionResult> {
   assertUuid(id, "CONNECTION_NOT_FOUND");
-  const { connection } = await getConnectionForWorkspace(ctx.db, actor.workspace.id, id);
+  const { connection, account } = await getConnectionForWorkspace(ctx.db, actor.workspace.id, id);
   return createConnection(
     ctx,
     actor,
     { channel: connection.network, ...(req.returnUrl ? { returnUrl: req.returnUrl } : {}), ...(req.credentials ? { credentials: req.credentials } : {}) },
     connection,
+    // A disconnected account no longer exists at the provider: only a live (e.g. expired) one can be refreshed in place.
+    connection.status === "disconnected" ? undefined : account.externalId,
   );
 }
 

@@ -4,7 +4,7 @@
  * Parsing is tolerant (unknown keys ignored) but each mapped field is strict.
  */
 import { z } from "zod";
-import type { ZernioAccount, ZernioPostState, ZernioProfile, ZernioTargetState } from "./types.js";
+import type { ZernioAccount, ZernioAccountHealth, ZernioPostState, ZernioProfile, ZernioTargetState } from "./types.js";
 import { ZernioError } from "./errors.js";
 
 const str = z.string().trim().min(1);
@@ -34,6 +34,35 @@ const accountWire = z
   })
   .loose();
 export const accountListResponse = z.object({ accounts: z.array(accountWire) }).loose();
+
+/**
+ * `GET /v1/accounts/health`. Parsed defensively: an unrecognised shape yields NO findings (treated as healthy),
+ * never a false "needs reconnection" that would block a working account.
+ */
+const healthEntry = z
+  .object({
+    accountId: refId.optional(),
+    _id: refId.optional(),
+    id: refId.optional(),
+    status: optStr,
+    needsReconnect: z.boolean().optional(),
+    tokenValid: z.boolean().optional(),
+    tokenStatus: z.union([z.string(), z.object({ valid: z.boolean().optional(), isValid: z.boolean().optional() }).loose()]).optional(),
+  })
+  .loose();
+export const accountsHealthResponse = z.object({ accounts: z.array(healthEntry).default([]) }).loose();
+
+export function mapAccountHealth(w: z.infer<typeof healthEntry>): ZernioAccountHealth | undefined {
+  const externalId = w.accountId ?? w._id ?? w.id;
+  if (!externalId) return undefined;
+  const ts = w.tokenStatus;
+  const tokenBad =
+    w.tokenValid === false ||
+    (typeof ts === "object" && (ts.valid === false || ts.isValid === false)) ||
+    (typeof ts === "string" && /expired|revoked|invalid/i.test(ts));
+  const statusBad = typeof w.status === "string" && /disconnected|reconnect|expired|error/i.test(w.status);
+  return { externalId, needsReconnection: w.needsReconnect === true || tokenBad || statusBad };
+}
 
 export const currentUserResponse = z.object({ currentUserId: str }).loose();
 export const connectedAccountResponse = z.object({ account: accountWire }).loose();

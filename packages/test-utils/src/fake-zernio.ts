@@ -23,6 +23,8 @@ export interface FakeZAccount {
   displayName: string;
   isActive: boolean;
   needsReconnection?: boolean;
+  /** Zernio keeps the account listed as active, but its OAuth token can no longer be refreshed. */
+  tokenExpired?: boolean;
   metadata?: Record<string, unknown>;
 }
 export interface FakeZProfile {
@@ -55,7 +57,7 @@ export class FakeZernio {
   posts = new Map<string, FakeZPost>();
   idempotency = new Map<string, string>();
   fingerprints = new Map<string, string>();
-  pendingConnects = new Map<string, { platform: string; profileId: string; redirectUrl: string }>();
+  pendingConnects = new Map<string, { platform: string; profileId: string; redirectUrl: string; reconnectAccountId?: string }>();
   requests: Array<{ method: string; path: string; query: Record<string, string>; headers: Record<string, string>; body: unknown }> = [];
   faults: Array<{ match: (method: string, path: string) => boolean; fault: ZFault; remaining: number }> = [];
   now: () => Date = () => new Date();
@@ -100,7 +102,14 @@ export class FakeZernio {
     const state = new URL(authUrl).searchParams.get("state");
     const pending = state ? this.pendingConnects.get(state) : undefined;
     if (!pending) throw new Error("unknown auth url");
-    const acct = this.addAccount({ ...account, platform: pending.platform, profileId: pending.profileId });
+    // Safe reconnect refreshes THE SAME account (same id); otherwise a new account is created.
+    const existing = pending.reconnectAccountId ? this.accounts.get(pending.reconnectAccountId) : undefined;
+    if (existing) {
+      existing.tokenExpired = false;
+      existing.needsReconnection = false;
+      existing.isActive = true;
+    }
+    const acct = existing ?? this.addAccount({ ...account, platform: pending.platform, profileId: pending.profileId });
     const cb = new URL(pending.redirectUrl);
     cb.searchParams.set("connected", pending.platform);
     cb.searchParams.set("profileId", pending.profileId);
@@ -171,7 +180,8 @@ export class FakeZernio {
       const profileId = query.profileId;
       if (!profileId || !this.profiles.has(profileId)) return json(404, { error: "Profile not found" });
       const state = randomBytes(12).toString("hex");
-      this.pendingConnects.set(state, { platform: connect[1] as string, profileId, redirectUrl: query.redirect_url ?? "" });
+      if (query.reconnectAccountId && !this.accounts.has(query.reconnectAccountId)) return json(404, { error: "reconnect_account_not_found" });
+      this.pendingConnects.set(state, { platform: connect[1] as string, profileId, redirectUrl: query.redirect_url ?? "", ...(query.reconnectAccountId ? { reconnectAccountId: query.reconnectAccountId } : {}) });
       return json(200, { authUrl: `${FAKE_ZERNIO_AUTH_HOST}/${connect[1]}?state=${state}`, state });
     }
     if (path === "/v1/connect/bluesky/credentials" && method === "POST") {
@@ -182,6 +192,10 @@ export class FakeZernio {
       return json(200, { message: "Connected", account: acct });
     }
 
+    if (path === "/v1/accounts/health" && method === "GET") {
+      const list = [...this.accounts.values()].filter((a) => !query.profileId || a.profileId === query.profileId);
+      return json(200, { accounts: list.map((a) => ({ accountId: a._id, platform: a.platform, status: a.tokenExpired ? "error" : "healthy", tokenValid: !a.tokenExpired, needsReconnect: a.tokenExpired === true || a.needsReconnection === true })) });
+    }
     if (path === "/v1/accounts" && method === "GET") {
       const list = [...this.accounts.values()].filter((a) => !query.profileId || a.profileId === query.profileId);
       return json(200, { accounts: list, hasAnalyticsAccess: false });
@@ -193,6 +207,21 @@ export class FakeZernio {
     }
 
     if (path === "/v1/posts" && method === "POST") return this.createPost(headers, b);
+    const unpub = /^\/v1\/posts\/([^/]+)\/unpublish$/.exec(path);
+    if (unpub && method === "POST") {
+      const p = this.posts.get(decodeURIComponent(unpub[1] as string));
+      if (!p) return json(404, { error: "Post not found" });
+      const platform = String(b.platform ?? "");
+      const dead = p.platforms.map((t) => this.accounts.get(t.accountId)).find((a) => a?.tokenExpired && a.platform === platform);
+      if (dead) return json(401, { error: `Token expired or revoked for ${platform}. Please reconnect your account.`, code: "TOKEN_EXPIRED" });
+      if (!platform) return json(400, { error: "platform is required" });
+      if (["instagram", "tiktok", "snapchat"].includes(platform)) return json(400, { error: `Unpublish is not supported on ${platform}` });
+      const targets = p.platforms.filter((t) => t.platform === platform && (!b.accountId || t.accountId === b.accountId) && t.status === "published");
+      if (targets.length === 0) return json(409, { error: "No published target on that platform" });
+      for (const t of targets) t.status = "cancelled";
+      if (p.platforms.every((t) => t.status === "cancelled")) (p as { status: string }).status = "cancelled";
+      return json(200, { message: "Post unpublished", post: p });
+    }
     const post = /^\/v1\/posts\/([^/]+)$/.exec(path);
     if (post) {
       const id = decodeURIComponent(post[1] as string);

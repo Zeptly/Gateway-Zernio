@@ -39,7 +39,11 @@ export interface ProviderAccountPort {
    * carry the workspace's tenant ref, which the gateway verifies.
    */
   parseCallback?(query: Record<string, unknown>): ProviderCallbackResult;
-  initiateConnection(input: { channel: string; redirectUri: string; tenantRef: string }): Promise<{ authorizationUrl: string }>;
+  /**
+   * `reconnectAccountExternalId` is set when re-authorising an EXISTING connection: a provider that supports it
+   * refreshes that same account (stable ids) instead of creating a new one.
+   */
+  initiateConnection(input: { channel: string; redirectUri: string; tenantRef: string; reconnectAccountExternalId?: string }): Promise<{ authorizationUrl: string }>;
   /** Only for channels whose catalog entry supports the `credentials` strategy. */
   connectWithCredentials?(input: { channel: string; tenantRef: string; credentials: { handle: string; appPassword: string } }): Promise<ProviderAccountRecord[]>;
   getPendingConnection(sessionToken: string): Promise<PendingProviderConnection>;

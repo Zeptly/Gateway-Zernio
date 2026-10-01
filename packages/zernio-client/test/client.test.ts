@@ -88,6 +88,28 @@ describe("transport", () => {
     await expect(client.disconnectAccount("missing")).resolves.toBeUndefined();
   });
 
+  it("unpublishes a PUBLISHED post (DELETE refuses it), with the canonical channel mapped to Zernio's platform", async () => {
+    const { fake, client } = setup();
+    const profile = await client.ensureProfile("p-unpub");
+    const acct = fake.addAccount({ platform: "twitter", profileId: profile.id });
+    const post = await client.createPost({ idempotencyKey: "k-unpub", text: "remove me", media: [], targets: [{ platform: "x", accountExternalId: acct._id }], publishNow: true });
+    expect(post.targets[0]?.status).toBe("published");
+    await expect(client.deletePost(post.externalId)).rejects.toMatchObject({ kind: "validation" });
+    await client.unpublishPost({ externalId: post.externalId, channel: "x", accountExternalId: acct._id });
+    const req = fake.requests.find((r) => r.path.endsWith("/unpublish"));
+    expect(req?.method).toBe("POST");
+    expect(req?.body).toEqual({ platform: "twitter", accountId: acct._id });
+    expect((await client.getPost(post.externalId)).targets[0]?.status).not.toBe("published");
+  });
+
+  it("treats unpublish of a missing post as done and refuses unsupported networks before any request", async () => {
+    const { fake, client } = setup();
+    await expect(client.unpublishPost({ externalId: "missing", channel: "x" })).resolves.toBeUndefined();
+    const before = fake.requests.length;
+    await expect(client.unpublishPost({ externalId: "p", channel: "instagram" })).rejects.toMatchObject({ kind: "unsupported", retryable: false });
+    expect(fake.requests.length).toBe(before);
+  });
+
   it("reports a content-hash duplicate as a definitive, non-retryable conflict", async () => {
     const { fake, client } = setup();
     const profile = await client.ensureProfile("p");

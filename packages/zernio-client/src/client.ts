@@ -2,9 +2,9 @@ import type { Logger } from "@zeptly-gateway/observability";
 import { ZERNIO, ZernioError } from "./errors.js";
 import { platformFor } from "./vocabulary.js";
 import { ZernioHttp } from "./http.js";
-import type { ZernioAccount, ZernioCreatePostInput, ZernioPostState, ZernioProfile } from "./types.js";
+import type { ZernioAccount, ZernioAccountHealth, ZernioCreatePostInput, ZernioPostState, ZernioProfile } from "./types.js";
 import { ZernioWebhookVerifier } from "./webhooks.js";
-import { accountListResponse, connectedAccountResponse, connectUrlResponse, currentUserResponse, mapAccount, mapPost, mapProfile, parseOrProtocolError, postResponse, profileListResponse, profileResponse } from "./wire.js";
+import { accountListResponse, accountsHealthResponse, mapAccountHealth, connectedAccountResponse, connectUrlResponse, currentUserResponse, mapAccount, mapPost, mapProfile, parseOrProtocolError, postResponse, profileListResponse, profileResponse } from "./wire.js";
 
 export interface ZernioClientOptions {
   apiKey: string;
@@ -74,10 +74,16 @@ export class ZernioClient {
 
   /* ---------------------------- accounts ---------------------------- */
 
-  async getConnectUrl(input: { platform: string; profileId: string; redirectUrl: string }): Promise<{ authorizationUrl: string }> {
+  /**
+   * `reconnectAccountId` is Zernio's safe reconnect: it refreshes THAT existing account (same account id, so posts and
+   * mappings stay attached) and rejects a login that would land on a different account (`reconnect_account_mismatch`).
+   */
+  async getConnectUrl(input: { platform: string; profileId: string; redirectUrl: string; reconnectAccountId?: string }): Promise<{ authorizationUrl: string }> {
     const platform = platformFor(input.platform);
     assertSlug(platform);
-    const json = await this.http.request(`/v1/connect/${platform}`, { query: { profileId: input.profileId, redirect_url: input.redirectUrl } });
+    const json = await this.http.request(`/v1/connect/${platform}`, {
+      query: { profileId: input.profileId, redirect_url: input.redirectUrl, ...(input.reconnectAccountId ? { reconnectAccountId: input.reconnectAccountId } : {}) },
+    });
     return { authorizationUrl: parseOrProtocolError(connectUrlResponse, json, "GET /v1/connect/{platform}").authUrl };
   }
 
@@ -95,6 +101,15 @@ export class ZernioClient {
   async listAccounts(filter: { profileId?: string } = {}): Promise<ZernioAccount[]> {
     const json = await this.http.request("/v1/accounts", { query: { ...(filter.profileId ? { profileId: filter.profileId } : {}) } });
     return parseOrProtocolError(accountListResponse, json, "GET /v1/accounts").accounts.map(mapAccount);
+  }
+
+  /**
+   * Token health of every account (`GET /v1/accounts/health`). Zernio's account list keeps `isActive: true` for an account
+   * whose OAuth token can no longer be refreshed; this endpoint is what reports it. Best effort: callers treat a failure as "unknown".
+   */
+  async getAccountsHealth(filter: { profileId?: string } = {}): Promise<ZernioAccountHealth[]> {
+    const json = await this.http.request("/v1/accounts/health", { query: { ...(filter.profileId ? { profileId: filter.profileId } : {}) } });
+    return parseOrProtocolError(accountsHealthResponse, json, "GET /v1/accounts/health").accounts.map(mapAccountHealth).filter((h): h is ZernioAccountHealth => h !== undefined);
   }
 
   /** Idempotent: an already-disconnected account resolves successfully. */
@@ -138,7 +153,31 @@ export class ZernioClient {
       throw err;
     }
   }
+
+  /**
+   * Remove an already-PUBLISHED post from its network (`POST /v1/posts/{id}/unpublish`); Zernio keeps the post
+   * record (status "cancelled"). `DELETE /v1/posts/{id}` refuses published posts, so this is a separate operation.
+   * Idempotent: a post that no longer exists resolves successfully. Zernio does not support it on Instagram, TikTok
+   * or Snapchat (the call is refused here, before any request).
+   */
+  async unpublishPost(input: { externalId: string; channel: string; accountExternalId?: string }): Promise<void> {
+    const platform = platformFor(input.channel);
+    assertSlug(platform);
+    if (UNPUBLISH_UNSUPPORTED.has(input.channel)) {
+      throw new ZernioError("unsupported", `Unpublishing is not supported for ${input.channel}`, { retryable: false, ambiguous: false });
+    }
+    const body = { platform, ...(input.accountExternalId ? { accountId: input.accountExternalId } : {}) };
+    try {
+      await this.http.request(`/v1/posts/${encodeURIComponent(input.externalId)}/unpublish`, { method: "POST", body, mutating: true });
+    } catch (err) {
+      if (err instanceof ZernioError && err.kind === "not_found") return;
+      throw err;
+    }
+  }
 }
+
+/** Networks on which Zernio documents that unpublishing is NOT supported. */
+const UNPUBLISH_UNSUPPORTED: ReadonlySet<string> = new Set(["instagram", "tiktok", "snapchat"]);
 
 function assertSlug(platform: string): void {
   if (!/^[a-z][a-z0-9]{1,31}$/.test(platform)) throw new ZernioError("validation", "Invalid platform", { retryable: false, ambiguous: false });
