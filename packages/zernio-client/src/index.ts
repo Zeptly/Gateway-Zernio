@@ -3,6 +3,7 @@ export { ZERNIO, ZernioError } from "./errors.js";
 export type {
   ParsedZernioWebhook,
   ZernioAccount,
+  ZernioAccountHealth,
   ZernioCreatePostInput,
   ZernioMediaItem,
   ZernioPostState,

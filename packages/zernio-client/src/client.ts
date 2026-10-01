@@ -2,9 +2,9 @@ import type { Logger } from "@zeptly-gateway/observability";
 import { ZERNIO, ZernioError } from "./errors.js";
 import { platformFor } from "./vocabulary.js";
 import { ZernioHttp } from "./http.js";
-import type { ZernioAccount, ZernioCreatePostInput, ZernioPostState, ZernioProfile } from "./types.js";
+import type { ZernioAccount, ZernioAccountHealth, ZernioCreatePostInput, ZernioPostState, ZernioProfile } from "./types.js";
 import { ZernioWebhookVerifier } from "./webhooks.js";
-import { accountListResponse, connectedAccountResponse, connectUrlResponse, currentUserResponse, mapAccount, mapPost, mapProfile, parseOrProtocolError, postResponse, profileListResponse, profileResponse } from "./wire.js";
+import { accountListResponse, accountsHealthResponse, mapAccountHealth, connectedAccountResponse, connectUrlResponse, currentUserResponse, mapAccount, mapPost, mapProfile, parseOrProtocolError, postResponse, profileListResponse, profileResponse } from "./wire.js";
 
 export interface ZernioClientOptions {
   apiKey: string;
@@ -74,10 +74,16 @@ export class ZernioClient {
 
   /* ---------------------------- accounts ---------------------------- */
 
-  async getConnectUrl(input: { platform: string; profileId: string; redirectUrl: string }): Promise<{ authorizationUrl: string }> {
+  /**
+   * `reconnectAccountId` is Zernio's safe reconnect: it refreshes THAT existing account (same account id, so posts and
+   * mappings stay attached) and rejects a login that would land on a different account (`reconnect_account_mismatch`).
+   */
+  async getConnectUrl(input: { platform: string; profileId: string; redirectUrl: string; reconnectAccountId?: string }): Promise<{ authorizationUrl: string }> {
     const platform = platformFor(input.platform);
     assertSlug(platform);
-    const json = await this.http.request(`/v1/connect/${platform}`, { query: { profileId: input.profileId, redirect_url: input.redirectUrl } });
+    const json = await this.http.request(`/v1/connect/${platform}`, {
+      query: { profileId: input.profileId, redirect_url: input.redirectUrl, ...(input.reconnectAccountId ? { reconnectAccountId: input.reconnectAccountId } : {}) },
+    });
     return { authorizationUrl: parseOrProtocolError(connectUrlResponse, json, "GET /v1/connect/{platform}").authUrl };
   }
 
@@ -95,6 +101,15 @@ export class ZernioClient {
   async listAccounts(filter: { profileId?: string } = {}): Promise<ZernioAccount[]> {
     const json = await this.http.request("/v1/accounts", { query: { ...(filter.profileId ? { profileId: filter.profileId } : {}) } });
     return parseOrProtocolError(accountListResponse, json, "GET /v1/accounts").accounts.map(mapAccount);
+  }
+
+  /**
+   * Token health of every account (`GET /v1/accounts/health`). Zernio's account list keeps `isActive: true` for an account
+   * whose OAuth token can no longer be refreshed; this endpoint is what reports it. Best effort: callers treat a failure as "unknown".
+   */
+  async getAccountsHealth(filter: { profileId?: string } = {}): Promise<ZernioAccountHealth[]> {
+    const json = await this.http.request("/v1/accounts/health", { query: { ...(filter.profileId ? { profileId: filter.profileId } : {}) } });
+    return parseOrProtocolError(accountsHealthResponse, json, "GET /v1/accounts/health").accounts.map(mapAccountHealth).filter((h): h is ZernioAccountHealth => h !== undefined);
   }
 
   /** Idempotent: an already-disconnected account resolves successfully. */

@@ -1,4 +1,5 @@
 import { GatewayError } from "@zeptly-gateway/gateway-contract";
+import { reauthorizationFromAuthError } from "./reauth.js";
 import {
   type Executor,
   type SocialPostRow,
@@ -555,7 +556,7 @@ export async function unpublishPost(ctx: SocialPublishingContext, actor: Actor, 
     try {
       await ctx.publishing.unpublishPost({ externalId: pub.providerPostId, network: t.network as SocialNetwork, accountExternalId: account.externalId });
     } catch (err) {
-      throw toGatewayError(err);
+      throw (await reauthorizationFromAuthError(ctx, ws.id, [t.connectionId], err)) ?? toGatewayError(err);
     }
     await ctx.db.transaction(async (tx) => {
       await tx

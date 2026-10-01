@@ -77,3 +77,9 @@ export interface ParsedZernioWebhook {
   type: string;
   event: ZernioWebhookEvent;
 }
+
+/** Token health of one account, from `GET /v1/accounts/health`. */
+export interface ZernioAccountHealth {
+  externalId: string;
+  needsReconnection: boolean;
+}

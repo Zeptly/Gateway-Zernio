@@ -34,3 +34,20 @@ Provider authority: <https://docs.zernio.com/> (OpenAPI 3.1, API version **1.181
 5. Zernio's account `status`/`needsReconnection` semantics drive `reauthorization_required` through reconciliation only; no live check.
 6. Pagination of `GET /v1/accounts` and `GET /v1/profiles` is not implemented (the spec returns all when `page`/`limit` are omitted).
 7. Analytics (`social.analytics.basic@1`) is a candidate next slice (`GET /v1/analytics`); not started.
+
+
+## Authorisation lifecycle (persistence and wake-up)
+
+- **Zernio refreshes tokens itself**; when a refresh cannot recover an account the provider call returns `401 … Token expired or revoked`
+  (`TOKEN_EXPIRED`) and the account must be re-authorised. `GET /v1/accounts` keeps such an account `isActive: true`, so listing alone cannot see it.
+- **Detection.** `ZernioAccountPort.listAccounts` also reads `GET /v1/accounts/health` (best effort: a failing health call never downgrades an account).
+  `reconcile_connections` runs every 10 minutes (X access tokens live ~2 h) and flips a dead account to `reauthorization_required`.
+  An `account.disconnected` (unintentional) webhook does the same immediately.
+- **Fail closed, with a precise error.** A provider `401/403` on publish or unpublish flags the connection `reauthorization_required` and returns
+  `REAUTHORIZATION_REQUIRED` (409) instead of the generic "provider rejected this gateway's credentials". Later dispatches are blocked with the same code.
+- **One-click wake-up.** `POST /v1/connections/{id}/reconnect` calls `GET /v1/connect/{platform}?reconnectAccountId=<account>` (Zernio's safe reconnect):
+  the SAME account is refreshed, the connection id and every post/mapping stay attached, and a login that lands on a different account is rejected by Zernio
+  (`reconnect_account_mismatch`). A `disconnected` connection (account deleted) is reconnected as a new account instead. Completing the callback restores `connected`;
+  reconcile deliberately does not "heal" the status on its own.
+- **Scopes.** The gateway passes no scope list to Zernio; Zernio documents the X scopes it requests as `tweet.read, tweet.write, users.read, offline.access, media.write`
+  (`offline.access` is what yields a refresh token). Whether a given account holds a refresh token is only visible in Zernio's account health, not in our data.

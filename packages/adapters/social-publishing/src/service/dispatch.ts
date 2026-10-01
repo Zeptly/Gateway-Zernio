@@ -1,4 +1,5 @@
 import { type ErrorCode, GatewayError, UpstreamError } from "@zeptly-gateway/gateway-contract";
+import { reauthorizationFromAuthError } from "./reauth.js";
 import {
   type Executor,
   providerAccounts,
@@ -121,6 +122,7 @@ export interface DispatchOutcome {
 export async function dispatchClaimed(ctx: SocialPublishingContext, pub: SocialPublicationRow, workerId: string): Promise<DispatchOutcome> {
   const log = ctx.logger.child({ publicationId: pub.id, postId: pub.postId, attempt: pub.attempts, provider: pub.provider });
   if (!pub.idempotencyKey) throw new Error("invariant: idempotency key must be persisted before dispatch");
+  const eligible: TargetWithAccount[] = [];
   try {
     const all = await loadTargets(ctx.db, pub);
     const open = all.filter((t) => t.target.status === "pending" || t.target.status === "scheduled" || t.target.status === "publishing");
@@ -130,7 +132,6 @@ export async function dispatchClaimed(ctx: SocialPublishingContext, pub: SocialP
       open.map((t) => t.target.connectionId),
     );
     const blocked: Array<{ targetId: string; code: ErrorCode; message: string }> = [];
-    const eligible: TargetWithAccount[] = [];
     for (const t of open) {
       const c = conns.get(t.target.connectionId);
       if (!c || !t.accountExternalId) blocked.push({ targetId: t.target.id, code: "CONNECTION_NOT_FOUND", message: "Connection mapping not found" });
@@ -158,7 +159,8 @@ export async function dispatchClaimed(ctx: SocialPublishingContext, pub: SocialP
     const remote = scheduledAt ? await provider.schedule({ ...request, scheduledAt }) : await provider.publish(request);
     return await applyRemoteState(ctx, pub, remote, { source: "dispatch", workerId, requestedTargetIds: eligible.map((t) => t.target.id) });
   } catch (err) {
-    return finalizeFailure(ctx, pub, workerId, err);
+    const reauth = await reauthorizationFromAuthError(ctx, pub.workspaceId, [...new Set(eligible.map((t) => t.target.connectionId))], err);
+    return finalizeFailure(ctx, pub, workerId, reauth ?? err);
   }
 }
 

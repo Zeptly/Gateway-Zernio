@@ -236,6 +236,69 @@ describe("unpublish (remove a LIVE post from its network)", () => {
   });
 });
 
+describe("authorisation lapse: detect, explain, and reconnect in place", () => {
+  async function expireToken(connId: string) {
+    const acct = [...h.fake.accounts.values()][0];
+    if (!acct) throw new Error("no account");
+    acct.tokenExpired = true; // still listed as active by Zernio, but its token cannot be refreshed
+    expect((await h.call(A, "GET", `/v1/connections/${connId}`)).json.status).toBe("connected");
+    return acct;
+  }
+
+  it("reconcile detects a dead token that Zernio still lists as active and flags the connection", async () => {
+    const [c] = await h.connect(A, "x");
+    await expireToken(c.id);
+    const rec = await h.call(A, "POST", "/v1/connections/reconcile", undefined, { "idempotency-key": idem() });
+    expect(rec.status).toBeLessThan(300);
+    const after = await h.call(A, "GET", `/v1/connections/${c.id}`);
+    expect(after.json.status).toBe("reauthorization_required");
+    expect(h.fake.requests.some((r) => r.path === "/v1/accounts/health")).toBe(true);
+  });
+
+  it("a provider auth refusal on unpublish flags the connection and returns REAUTHORIZATION_REQUIRED (not the generic credentials error)", async () => {
+    const [c] = await h.connect(A, "x");
+    const created = await draft(A, [c.id], "remove me later");
+    await h.call(A, "POST", `${base}/posts/${created.json.id}/publish`, undefined, { "idempotency-key": idem() });
+    await h.drain();
+    expect((await h.call(A, "GET", `${base}/posts/${created.json.id}`)).json.status).toBe("published");
+    await expireToken(c.id);
+    const un = await h.call(A, "POST", `${base}/posts/${created.json.id}/unpublish`, undefined, { "idempotency-key": idem() });
+    expect(un.status).toBe(409);
+    expect(un.json.error.code).toBe("REAUTHORIZATION_REQUIRED");
+    expect((await h.call(A, "GET", `/v1/connections/${c.id}`)).json.status).toBe("reauthorization_required");
+    // the post is untouched: still published, still unpublishable after reconnect
+    expect((await h.call(A, "GET", `${base}/posts/${created.json.id}`)).json.status).toBe("published");
+  });
+
+  it("reconnect refreshes the SAME provider account (reconnectAccountId), keeps the connection id, and restores connected", async () => {
+    const [c] = await h.connect(A, "x");
+    const acct = await expireToken(c.id);
+    await h.call(A, "POST", "/v1/connections/reconcile", undefined, { "idempotency-key": idem() });
+    const rc = await h.call(A, "POST", `/v1/connections/${c.id}/reconnect`, { returnUrl: "https://app.zeptly.test/cb" });
+    expect(rc.status).toBe(201);
+    const connectCall = h.fake.requests.filter((r) => r.path === "/v1/connect/twitter").at(-1);
+    expect(connectCall?.query.reconnectAccountId).toBe(acct._id);
+    const { callbackUrl } = h.fake.authorize(rc.json.provisioning.authorizationUrl);
+    const cb = new URL(callbackUrl);
+    const res = await h.app.inject({ method: "GET", url: cb.pathname + cb.search });
+    expect(res.statusCode).toBe(303);
+    expect(h.fake.accounts.size).toBe(1);
+    const after = await h.call(A, "GET", `/v1/connections/${c.id}`);
+    expect(after.json).toMatchObject({ id: c.id, status: "connected" });
+    // and the worker's next reconcile agrees
+    await h.call(A, "POST", "/v1/connections/reconcile", undefined, { "idempotency-key": idem() });
+    expect((await h.call(A, "GET", `/v1/connections/${c.id}`)).json.status).toBe("connected");
+  });
+
+  it("an unhealthy health endpoint never downgrades a working account", async () => {
+    const [c] = await h.connect(A, "x");
+    const original = h.fake.fetch;
+    h.fake.fetch = (async (url: string, init: RequestInit) => (String(url).includes("/v1/accounts/health") ? new Response("{}", { status: 500 }) : original(url, init))) as typeof h.fake.fetch;
+    await h.call(A, "POST", "/v1/connections/reconcile", undefined, { "idempotency-key": idem() });
+    expect((await h.call(A, "GET", `/v1/connections/${c.id}`)).json.status).toBe("connected");
+  });
+});
+
 describe("canonical x (Zernio calls it twitter)", () => {
   it("connects X as canonical `x`; the provider name never reaches the API", async () => {
     const [c] = await h.connect(A, "x");

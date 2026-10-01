@@ -38,7 +38,8 @@ export function gatewayJobHandlers<C extends WebhookContext & ConnectionsContext
 }
 
 export const GATEWAY_PERIODIC_JOBS = [
-  { type: "reconcile_connections", everyMs: 60 * 60_000 },
+  // X access tokens live ~2h: detect a lapsed authorisation within minutes, not hours.
+  { type: "reconcile_connections", everyMs: 10 * 60_000 },
   { type: "housekeeping", everyMs: 60 * 60_000 },
 ];
 

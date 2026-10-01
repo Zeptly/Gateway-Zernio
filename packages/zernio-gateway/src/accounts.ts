@@ -40,9 +40,14 @@ export class ZernioAccountPort implements ProviderAccountPort {
     return {};
   }
 
-  async initiateConnection(input: { channel: string; redirectUri: string; tenantRef: string }): Promise<{ authorizationUrl: string }> {
+  async initiateConnection(input: { channel: string; redirectUri: string; tenantRef: string; reconnectAccountExternalId?: string }): Promise<{ authorizationUrl: string }> {
     const profile = await this.client.ensureProfile(this.profileName(input.tenantRef));
-    return this.client.getConnectUrl({ platform: input.channel, profileId: profile.id, redirectUrl: input.redirectUri });
+    return this.client.getConnectUrl({
+      platform: input.channel,
+      profileId: profile.id,
+      redirectUrl: input.redirectUri,
+      ...(input.reconnectAccountExternalId ? { reconnectAccountId: input.reconnectAccountExternalId } : {}),
+    });
   }
 
   async connectWithCredentials(input: { channel: string; tenantRef: string; credentials: { handle: string; appPassword: string } }): Promise<ProviderAccountRecord[]> {
@@ -74,15 +79,28 @@ export class ZernioAccountPort implements ProviderAccountPort {
     return [toRecord(account, this.tenantRefOf(profiles.find((p) => p.id === account.profileId)?.name))];
   }
 
+  /**
+   * Zernio keeps `isActive: true` for an account whose OAuth token it can no longer refresh; only the health endpoint
+   * says so. Health is best effort: if it fails the listing still works and the account is simply not downgraded.
+   */
+  private async deadTokens(profileId?: string): Promise<Set<string>> {
+    try {
+      return new Set((await this.client.getAccountsHealth(profileId ? { profileId } : {})).filter((h) => h.needsReconnection).map((h) => h.externalId));
+    } catch {
+      return new Set();
+    }
+  }
+
   async listAccounts(filter: { tenantRef?: string } = {}): Promise<ProviderAccountRecord[]> {
     if (filter.tenantRef) {
       const profile = await this.client.findProfileByName(this.profileName(filter.tenantRef));
       if (!profile) return [];
-      return (await this.client.listAccounts({ profileId: profile.id })).map((a) => toRecord(a, filter.tenantRef as string));
+      const [accounts, dead] = await Promise.all([this.client.listAccounts({ profileId: profile.id }), this.deadTokens(profile.id)]);
+      return accounts.map((a) => toRecord(a, filter.tenantRef as string, dead));
     }
-    const [profiles, accounts] = await Promise.all([this.client.listProfiles(), this.client.listAccounts()]);
+    const [profiles, accounts, dead] = await Promise.all([this.client.listProfiles(), this.client.listAccounts(), this.deadTokens()]);
     const names = new Map(profiles.map((p) => [p.id, p.name]));
-    return accounts.map((a) => toRecord(a, this.tenantRefOf(names.get(a.profileId))));
+    return accounts.map((a) => toRecord(a, this.tenantRefOf(names.get(a.profileId)), dead));
   }
 
   disconnectAccount(externalId: string): Promise<void> {
@@ -100,14 +118,14 @@ export class ZernioAccountPort implements ProviderAccountPort {
   }
 }
 
-function toRecord(a: ZernioAccount, tenantRef: string): ProviderAccountRecord {
+function toRecord(a: ZernioAccount, tenantRef: string, dead: ReadonlySet<string> = new Set()): ProviderAccountRecord {
   return {
     externalId: a.externalId,
     channel: channelFor(a.platform),
     ...(a.username ? { username: a.username } : {}),
     ...(a.displayName ? { displayName: a.displayName } : {}),
     ...(a.avatarUrl ? { avatarUrl: a.avatarUrl } : {}),
-    isActive: a.isActive,
+    isActive: a.isActive && !dead.has(a.externalId),
     tenantRef,
   };
 }
